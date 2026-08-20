@@ -479,60 +479,68 @@ def main():
             ('tropopause_equator', 'ATHAD: top of the convective column at the equator in m', 'double', 207000.0),
 
 
-            # ATHAD_COND circulation-cell layout. Ported from ATHAD (its items 31-38) with
-            # the MECHANISM copied and every NUMBER re-derived, because the two models are
-            # not in the same regime:
+            # ATHAD_PERID circulation-cell layout. Ported from ATHAD_COND with the MECHANISM
+            # copied and every NUMBER re-checked against THIS model's own column and wind.
+            # Both parameters come out at the sibling's value, and they get there by two
+            # different routes -- one weakly sensitive, one not sensitive at all -- so the
+            # agreement is worth recording rather than leaving to look like inheritance.
             #
             #                  scale height   dtheta/theta      Ro_T     Held-Hou edge
-            #     Earth            8.4 km     45/288  = 0.156   5.96e-2     18.1 deg
+            #     Earth            8.4 km     45/288  = 0.156   8.53e-2     21.6 deg
             #     ATHAD           59.3 km     50/1500 = 0.033   4.75e-3      5.1 deg
-            #     ATHAD_COND      15.0 km     10/513  = 0.0195  7.03e-4      2.0 deg
+            #     ATHAD_COND      15.0 km     10/513  = 0.0195  9.38e-4      2.27 deg
+            #     ATHAD_PERID      7.7 km     10/358  = 0.0279  9.81e-4      2.32 deg
             #
-            # Ro_T = g*H*(dtheta/theta)/(omega^2 a^2). Condensation cost this atmosphere
-            # both terms: the sea-surface contrast is 10 K rather than 50, and the column
-            # collapsed from 59.3 km of scale height to 15.0. Rotation is unchanged, so
-            # Ro_T falls a further 6.8x below ATHAD's and 85x below Earth's, and the direct
-            # cell is narrower again -- 2.0 deg against ATHAD's 5.1.
+            # Ro_T = g*H*(dtheta/theta)/(omega^2 a^2). Cooling from 513 to 358 K cost this
+            # atmosphere half its scale height and gave back a larger dtheta/theta, and the
+            # two nearly cancel: Ro_T is 4.6 % ABOVE ATHAD_COND's rather than below it.
             #
-            #   cell_lat_scale = 0.11, from 1.96/18.06 (Held-Hou edge, this model against
-            #   Earth's). ATHAD's 0.33 is ATHAD's number and would be 3x too wide here.
-            #   CAVEAT: it puts the Hadley EDGE at 30*0.11 = 3.3 deg, which is three points
-            #   on a 1 deg grid. The direct cell is marginally resolved and that is a grid
-            #   statement, not a physical one -- if it matters, the fix is resolution, not
+            #   cell_lat_scale = 0.11. Derived: 2.32/21.6 = 0.107, against ATHAD_COND's
+            #   2.27/21.6 = 0.105. The Earth reference is computed at EARTH'S rotation
+            #   (7.292e-5), not the Hadean one -- using omega for both gives 4.97 deg for
+            #   Earth and a scale of 0.47, which is wrong and is an easy mistake to make.
+            #   ATHAD's 0.33 is ATHAD's number and would be 3x too wide here.
+            #   CAVEAT: it puts the Hadley EDGE at 30*0.11 = 3.3 deg, three points on a
+            #   1 deg grid. The direct cell is marginally resolved and that is a grid
+            #   statement, not a physical one -- if it matters the fix is resolution, not
             #   a wider prescribed cell.
             #
-            #   n_cells_hemisphere = 5, from THIS model's own emergent wind. Rhines
-            #   L_beta = pi*sqrt(2U/beta) with beta = 2*omega*cos(phi)/a and the measured
-            #   U = 20.2 m/s (max zonal at iteration 100) gives a 21.4 deg band at 45 deg,
-            #   so (90 - 3.3)/21.4 = 4.1 extratropical bands plus the direct cell -> 5.1.
-            #   ATHAD reaches the same count from U = 21.4 and a 9.9 deg Hadley edge, which
-            #   is a coincidence of two different roads, not a shared derivation.
+            #   n_cells_hemisphere = 5, from THIS model's own emergent wind, measured on
+            #   the 40-iteration baseline: max zonal (the w component here) = 21.46 m/s.
+            #   Rhines L_beta = pi*sqrt(2U/beta), beta = 2*omega*cos(phi)/a at 45 deg,
+            #   giving a 22.07 deg band, so (90 - 3.3)/22.07 + 1 = 4.93 -> 5.
             #
-            #   cell_amp_mode = 0, as in ATHAD. Unmeasured here.
+            #     ATHAD_PERID  U = 21.46 m/s   band 22.07 deg   4.93 cells
+            #     ATHAD_COND   U = 20.20       band 21.41       5.05
+            #     ATHAD        U = 21.40       band 22.04       4.63  (9.9 deg Hadley edge)
+            #
+            #   WHY ALL THREE FORKS LAND ON 5, which is not obvious and is not inheritance:
+            #   beta is IDENTICAL in all three (same omega, same planetary radius) and the
+            #   emergent zonal wind happens to be 20-24 m/s in all three. The count goes as
+            #   U^(-1/2), a weak dependence, so a fifth of the atmospheric mass and 155 K of
+            #   cooling do not move it. Contrast cell_lat_scale, which depends on Ro_T
+            #   directly and did have to be re-derived.
+            #
+            #   HOW MUCH SLACK: to justify n = 4 you would need U = 36.8 m/s (1.72x the
+            #   measured wind), and for n = 6, U = 13.3 m/s (0.62x). Neither is close.
+            #
+            #   TWO CAVEATS ON THE INPUT. U = 21.46 is from 40 iterations where ATHAD_COND
+            #   used 100, and the wind was still falling (24.45 at iteration 20), so it is
+            #   not converged -- though the count rounds to 5 across that whole range. And
+            #   the argument rests on omega = 3.17e-4, which is ATHAD's 4.4 Ga value
+            #   inherited twice and is an OPEN DECISION for this later epoch. n scales as
+            #   omega^(-1/2) through beta, so a slower day pushes the count DOWN: halving
+            #   omega gives ~3.8 cells and makes n = 4 arguable. Revisit this if omega moves.
+            #
+            #   cell_amp_mode = 0, as in both siblings. Unmeasured here.
             #
             # THE SAME CAVEAT APPLIES AS IN ATHAD, and if anything harder: n sets the
             # structure the model is HANDED, not one it can generate. Nothing here
             # maintains an indirect cell. Set cell_lat_scale 1.0 and n_cells_hemisphere 3
-            # to recover Earth's layout, which is what everything in this repo before this
-            # commit was measured on.
-            # ATHAD_PERID: 0.11 is INHERITED FROM ATHAD_COND AND CHECKED, not assumed. Held-Hou
-            # puts the Hadley edge at (5*Ro_T/3)^(1/2) with Ro_T = g*H*dtheta/(Omega^2*a^2*theta0).
-            # With this fork's own tropopause (14.6 km, where the column goes isothermal), its
-            # 10 K equator-pole contrast and 358 K surface, at Omega = 3.17e-4:
-            #
-            #     Earth        Ro_T = 8.53e-02   edge 21.6 deg   (observed 20-30, so the
-            #                                                     formula is behaving)
-            #     ATHAD_PERID  Ro_T = 9.81e-04   edge  2.32 deg  -> scale 2.32/21.6 = 0.107
-            #     ATHAD_COND   Ro_T = 9.38e-04   edge  2.27 deg  -> scale 0.105
-            #
-            # 0.107 against the configured 0.11 — the sibling's value survives here because the
-            # two forks have nearly the same tropopause height and the SAME rotation rate, not
-            # because it was carried across. If omega is ever re-derived for this later epoch
-            # (see the note on it), this number moves with the square root of Omega^-2, i.e.
-            # linearly in 1/Omega, and must be redone.
-            ('cell_lat_scale', 'ATHAD_COND: Hadley-edge latitude as a fraction of Earth\'s; 0.11 = Held-Hou edge for this rotation rate and contrast, 1.0 = Earth', 'double', 0.11),
-            ('cell_amp_mode', 'ATHAD_COND: scale the prescribed velocity amplitudes with cell_lat_scale; 0 = off, 1 = v,w by s (continuity), 2 = v by s and w by s^2 (angular momentum)', 'int', 0),
-            ('n_cells_hemisphere', 'ATHAD_COND: prescribed circulation cells per hemisphere; 5 = this regime (Rhines ~21 deg bands), 3 = Earth', 'int', 5),
+            # to recover Earth's layout.
+            ('cell_lat_scale', 'ATHAD_PERID: Hadley-edge latitude as a fraction of Earth\'s; 0.11 = Held-Hou edge for this rotation rate and contrast (derived 0.107), 1.0 = Earth', 'double', 0.11),
+            ('cell_amp_mode', 'ATHAD_PERID: scale the prescribed velocity amplitudes with cell_lat_scale; 0 = off, 1 = v,w by s (continuity), 2 = v by s and w by s^2 (angular momentum)', 'int', 0),
+            ('n_cells_hemisphere', 'ATHAD_PERID: prescribed circulation cells per hemisphere; 5 = this regime (Rhines 22.1 deg bands from a measured U = 21.5 m/s), 3 = Earth', 'int', 5),
 
 
             # ATHAD albedo. These replace the inherited albedo_pole/albedo_equator, which
@@ -546,13 +554,18 @@ def main():
             # planet. It is NOT ATHAD's 0.08 basaltic-melt value: the peridotitic melt this
             # model is named for has solidified and is under an ocean.
             #
-            # BUT DO NOT CARRY OVER ATHAD_COND'S CONCLUSION THAT IT IS NOT A LEVER. There, a 25 %
-            # change in this number was invisible (albedo field 0.499996 max and min, OLR
-            # identical to nine figures) because the cloud deck saturated the compositing
-            # refl = tau/(tau+2) at 0.9999909 in every column. THIS ATMOSPHERE HOLDS 18x LESS
-            # WATER — q_H2O = 0.0207 against 0.3616 — so the deck may well not be total, and if
-            # it is not, the clear-sky surface value shows through and this becomes a real lever.
-            # Measure it here before assuming either way; the sibling's null does not transfer.
+            # IT IS NOT A LEVER HERE EITHER, AND THAT WAS WORTH CHECKING RATHER THAN ASSUMING.
+            # In ATHAD_COND a 25 % change in this number was invisible (albedo field 0.499996
+            # max and min, OLR identical to nine figures) because the cloud deck saturated the
+            # compositing refl = tau/(tau+2) at 0.9999909 in every column. This atmosphere holds
+            # 17x LESS WATER -- q_H2O = 0.0212 against 0.3616 -- so the deck might not have been
+            # total and the clear-sky value might have shown through.
+            #
+            # MEASURED: it is total. The 20-iteration t_skin relaxation reports a mean planetary
+            # albedo of 0.4994 against albedo_cloud = 0.50, i.e. the deck saturates here as
+            # completely as in the sibling despite the water. So albedo_surface is a documented
+            # input with no reach into the answer, in all three forks. The prediction written
+            # here before the measurement -- that it might become a real lever -- is withdrawn.
             ('albedo_surface', 'ATHAD_COND: clear-sky albedo of the liquid water sea surface', 'double', 0.06),
             ('albedo_cloud', 'ATHAD: shortwave albedo of an optically thick cloud top', 'double', 0.50),
 
