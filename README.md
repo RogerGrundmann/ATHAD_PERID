@@ -26,6 +26,51 @@ colder, with a genuinely CO₂-dominated composition — 78 mole-% CO₂ against
 water down from 56 mole-% to 4.6 %. The sea still sets the surface humidity, but it is a
 much drier atmosphere sitting on it.
 
+## The first baseline, and what it says the model cannot do yet
+
+40 iterations, 24 threads, shipped defaults, moist physics from iteration 0. **A baseline, not
+a result.**
+
+| | iteration 20 | iteration 40 |
+|---|---|---|
+| OLR | 270.91 W/m² | 270.91 W/m² |
+| absorbed SW + geothermal | 270.91 | 270.91 |
+| photosphere (τ = 1) | 19.2 km, **262.91 K** | 19.2 km, **262.91 K** |
+| **emission from the isothermal skin** | **100.0 % of columns** | **100.0 %** |
+| `t_skin` | 262.91 → 262.91 | 262.91 → 262.91 |
+| mean planetary albedo | 0.4994 | 0.4994 |
+| `Psi_max` | 9396.90 (1e9 kg/s) | 9389.18 (−0.08 %) |
+
+**The OLR equals the absorbed flux to five figures because it is not a radiative result.** The
+photosphere sits at 19.2 km at exactly `t_skin`, and the model's own diagnostic says so: *"the
+OLR is t_skin restated: the radiating level sits in the isothermal top, so OLR = absorbed is
+arithmetic."* At 12.5 bar with 2 % water there is not enough optical depth to put the radiating
+level anywhere else.
+
+**This is the family's `t_skin` problem in its purest form, and the three forks line up
+monotonically:**
+
+| | p_surf | photosphere | emission from the skin |
+|---|---|---|---|
+| ATHAD | 250 bar | 237.4 km | **1.1 %** |
+| ATHAD_COND | 60 bar | 65.9 km | **58.6 %** |
+| **ATHAD_PERID** | **12.5 bar** | **19.2 km** | **100.0 %** |
+
+The thinner and drier the atmosphere, the more completely the outgoing flux collapses onto the
+prescribed skin temperature. **So as configured this model can say nothing radiative**: no
+opacity, composition or cloud experiment would move the OLR, because the OLR is arithmetic. The
+composition work in this fork is sound and the OLR still cannot be used to test it.
+
+`Psi_max` = 9389 against ATHAD_COND's 40 516 and ATHAD's 105 589 — a quarter of the sibling's,
+consistent with a fifth of the atmospheric mass — and stable to −0.08 % over 20 iterations, so
+the circulation is behaving.
+
+**The run that follows from this** is `ATM_PROGNOSTIC_T=1 ATM_RAD_DIRECT=1`, freeing the profile
+with the converged radiation solver. ATHAD README item 66 has just shown that combination
+converges there (474 → 223.8 W/m² with decelerating differences) rather than running away as the
+under-converged solver made it appear. This fork is where the prescribed profile does the most
+damage, so it is where freeing it should matter most.
+
 **THE SECTIONS BELOW THIS POINT ARE INHERITED FROM ATHAD_COND AND WERE MEASURED ON IT.**
 Every number in them belongs to a 60 bar / 513 K world unless it says otherwise. They are kept
 because the code is shared and the reasoning travels; they are not results of this model.

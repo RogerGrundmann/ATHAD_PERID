@@ -159,19 +159,19 @@ well-mixed background entering `R_mix`, `cp_mix` and the opacity.
 
 ## What the model currently says
 
-Measured; see the README for the full items.
+**One 40-iteration baseline, and its headline is a limitation.** OLR 270.91 W/m² = absorbed
+SW + geothermal 270.91 exactly; photosphere at 19.2 km and **262.91 K = `t_skin`**; **emission
+from the isothermal skin 100.0 % of columns**. The OLR carries no radiative information at all
+in this configuration — it is arithmetic. Across the family the collapse is monotone in
+pressure: ATHAD 1.1 % of columns, ATHAD_COND 58.6 %, this fork **100 %**, because at 12.5 bar
+with 2 % water there is no optical depth to put the radiating level below the isothermal top.
+**Do not test opacity, composition or clouds against the OLR here until the profile is freed.**
 
-- **Saturated troposphere 62 km deep.** 511 K at the sea, 429 K at 18 km, 280 K at 60 km;
-  first 10 km at **5.02 K/km** against the 5.04 the moist lapse predicts. Precipitable
-  water 133.5 m. `q_H₂O` tracks `q_sat` to four digits.
-- **The cold trap is 8× too wet**: 0.0349 kg/kg against the 0.00423 the stated dry
-  composition implies. Reconciling them needs a cold trap near **217 K**. Testable.
-- **The OLR is not yet an output**: OLR = σT_lid⁴ = 268.10 W/m² to six figures, with
-  eps = 0.0000 and a transparent lid. τ ≈ 1 falls at ~0.07 bar, which is where the
-  isothermal skin begins, so the emission comes from a prescribed temperature and `t_skin`
-  relaxes to close the balance it is reporting. Deepening the shell will not fix it.
-- Not yet run beyond 20 iterations: no stability run, no grid convergence, no thread
-  determinism check.
+`Psi_max` = 9389 (1e9 kg/s), a quarter of ATHAD_COND's and stable to −0.08 % over 20 iterations;
+mean albedo 0.4994 = `albedo_cloud`, so the deck saturates here as in both siblings.
+
+The run that follows is `ATM_PROGNOSTIC_T=1 ATM_RAD_DIRECT=1` — ATHAD item 66 showed that pairing
+converges rather than diverging, and this fork has the most to gain from it.
 
 ## Relationship to the family
 
