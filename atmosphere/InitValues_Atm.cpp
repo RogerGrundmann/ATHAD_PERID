@@ -934,7 +934,7 @@ void cAtmosphereModel::initWaterWapour() {
 //
 // WHAT WAS HERE. ThermoAtm::co2Atmosphere() stored the local mass fraction directly,
 //
-//     co2(i) = (1 - c(i)) * f_CO2,     f_CO2 = q_CO2/(q_CO2 + q_bg) at the sea = 0.8581
+//     co2(i) = (1 - c(i)) * f_CO2,     f_CO2 = q_CO2/(q_CO2 + q_bg) at the sea = 0.8490
 //
 // with a comment explaining exactly why a uniform MASS fraction is wrong here: the water runs
 // from 0.346 at the sea to 0.004 above the cold trap, so holding the mass fraction uniform
@@ -949,7 +949,7 @@ void cAtmosphereModel::initWaterWapour() {
 // invariant is maintained instead of imprinted. The stored field therefore becomes UNIFORM at
 // co2_0 and the height dependence is produced on demand. The two agree exactly at t = 0:
 //
-//     co2_0/(1 - c_0) = 0.5478/0.6384 = 0.8581 = f_CO2
+//     co2_0/(1 - c_0) = 0.8310/0.9788 = 0.8490 = f_CO2
 //
 // so q_CO2_of(c, co2_0) IS (1 - c)*f_CO2, the identical field, and it stays that field
 // afterwards. One mechanism, applied continuously, replacing one applied once.

@@ -104,13 +104,12 @@ namespace AtmMixture {
     // THE NON-WATER CARRIER AND ITS DILUTION (ported from ATHAD, its README items 57 and 59).
     //
     // WORSE HERE THAN THERE, because of what this fork is. ATHAD_COND is the post-condensation
-    // atmosphere: CO2 is 54.78 % of the mass and water only 36.16 % (62.33 / 34.64 before the
-    // trace gases were restored on 2026-08-20), and the water field spans 20.1 to 339.0 g/kg —
-    // a 16.8x range against ATHAD's 1.4x. With the old split, which read co2 straight from the
+    // atmosphere: CO2 is 83.10 % of the mass and water only 2.12 %, and the water field spans
+    // 0.41 to 21.2 g/kg — a 52x range against ATHAD's 1.4x, the widest in the family. With the old split, which read co2 straight from the
     // field and gave the BACKGROUND every change in the water:
     //
-    //     at the sea surface (q_v = 0.339)  q_CO2 = 0.5478 (pinned)   q_bg = 0.1132
-    //     aloft              (q_v = 0.020)  q_CO2 = 0.5478 (pinned)   q_bg = 0.4322
+    //     at the sea surface (q_v = 0.021)  q_CO2 = 0.8310 (pinned)   q_bg = 0.1477
+    //     aloft              (q_v = 0.000)  q_CO2 = 0.8310 (pinned)   q_bg = 0.1690
     //
     // The background — 3 % of this atmosphere at the reference — was being handed 0.31 of the
     // mass aloft, a 9.5x swing, all of it stolen from CO2. R_mix aloft comes out 240.1 where

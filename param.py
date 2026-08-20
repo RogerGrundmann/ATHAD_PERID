@@ -16,7 +16,7 @@ def main():
             # output_ATOM/ — so a default of output_Hadean_condensation/ lands in
             # python/output_Hadean_condensation. (The giant-planet siblings hyphenate,
             # output-Uranus/, but ATHAD_COND is from the ATOM line and follows it.)
-            ('output_path', 'directory where model outputs should be placed(must end in /)', 'string', 'output_Hadean_condensation/'),
+            ('output_path', 'directory where model outputs should be placed(must end in /)', 'string', 'output_Hadean_peridotite/'),
 
 
 
@@ -152,7 +152,18 @@ def main():
             #
             # It replaces the inherited t_00 = 236.15 K ("-37 C"), which was Earth's
             # tropopause temperature and landed near the right range here by coincidence.
-            ('t_skin', 'ATHAD: starting radiative-equilibrium temperature of the optically thin top, in K', 'double', 254.0),
+            # ATHAD_PERID: MEASURED, not inherited. t_skin is a fixed point of the absorbed
+            # flux -- sigma*T^4 = (1-albedo)*SW + geothermal -- so it cannot be set by hand
+            # without being circular. Run 20 iterations and the model relaxes it to 262.91 K
+            # from ITS OWN albedo of 0.4994 (absorbed + geothermal 270.91 W/m2); the config now
+            # starts there instead of at ATHAD's inherited 254.0, which was 8.9 K off and moved
+            # the cold trap with it.
+            #
+            # THE ALBEDO IN THAT FIXED POINT IS 0.4994 = albedo_cloud, WHICH ANSWERS AN OPEN
+            # QUESTION: this atmosphere holds 17x less water than ATHAD_COND's, so the cloud
+            # deck might not have been total -- and it is. albedo_surface is therefore not a
+            # lever here either, for the same reason as in the sibling.
+            ('t_skin', 'ATHAD: starting radiative-equilibrium temperature of the optically thin top, in K', 'double', 262.91),
 
             # ATHAD: under-relaxation of the t_skin fixed-point iteration, per radiation call.
             #
@@ -169,7 +180,7 @@ def main():
             # ATHAD: 42.97). Almost exactly ATHAD's, at a quarter of the pressure — the gas
             # is twice as heavy and three times as cold, and the two nearly cancel.
             # This is what sets the surface pressure, via p = 1e-2*(r_air*R_mix*T).
-            ('r_air', 'ATHAD_COND: reference density of the atmospheric mixture at the sea surface in kg/m³', 'double', 16.95),
+            ('r_air', 'ATHAD_COND: reference density of the atmospheric mixture at the sea surface in kg/m³', 'double', 16.49),
             ('r_0_water', 'reference density of fresh water in kg/m3', 'double', 997.0),
             ('t_equat_modern', 'mean temperature of the modern earth in °C', 'double', 15.4),
 
@@ -386,7 +397,7 @@ def main():
             # 100.0 is between them: 33x Earth's, the density ratio, with 7.3x headroom over
             # the model's own uncapped peak. That restores the cap to what it is for — a
             # NaN/runaway backstop — rather than a limiter that sets the answer.
-            ('mc_M_max', 'ATHAD_COND: ceiling on convective mass flux |M_u|,|M_d| in kg/(m2 s)', 'double', 42.0),
+            ('mc_M_max', 'ATHAD_COND: ceiling on convective mass flux |M_u|,|M_d| in kg/(m2 s)', 'double', 41.2),
 
 #            ('iter_prec', 'precipitation sub-iteration count: min 3 for evaporation (e_d, e_p) to act on non-zero P_conv; check convergence at 4-5', 'int', 4),
             ('iter_prec', 'precipitation sub-iteration count: min 3 for evaporation (e_d, e_p) to act on non-zero P_conv; check convergence at 4-5', 'int', 3),
@@ -443,6 +454,17 @@ def main():
             # fixed at 61 and a deeper shell is a coarser grid — it is not yet converged.
             #
             # zeta 3.0 with im = 61 keeps the top cell at ~1.7 local scale heights.
+            # ATHAD_PERID: the 120 km shell is INHERITED AND DELIBERATELY UNCHANGED, but it
+            # means something different here and the difference is worth stating. ATHAD_COND's
+            # scale height is 15.7 km, so 120 km is 7.6 of them; this fork's is 7.73 km, so the
+            # same shell is 15.5 scale heights and the lid sits near 1e-05 bar rather than
+            # 0.03. That is deeper in the only units that matter, and it puts more levels in
+            # very thin air.
+            #
+            # NOT changed, because the grid is not a free knob: L_atm and zeta set the metric,
+            # the diffusive CFL and dt_visc together (ATHAD README items 24 and 39), so moving
+            # the shell without re-deriving those trades a stated inconsistency for an unstated
+            # one. Decide it against a measured photosphere height, as ATHAD item 39 argues.
             ('L_atm', 'ATHAD_COND: amplitude of the radial stretch in m; shell = (exp(zeta)-1)*L_atm = 120 km', 'double', 6287.5),
             ('zeta', 'ATHAD: radial coordinate-stretching factor (was a hard-coded 3.715)', 'double', 3.0),
 
@@ -493,6 +515,21 @@ def main():
             # maintains an indirect cell. Set cell_lat_scale 1.0 and n_cells_hemisphere 3
             # to recover Earth's layout, which is what everything in this repo before this
             # commit was measured on.
+            # ATHAD_PERID: 0.11 is INHERITED FROM ATHAD_COND AND CHECKED, not assumed. Held-Hou
+            # puts the Hadley edge at (5*Ro_T/3)^(1/2) with Ro_T = g*H*dtheta/(Omega^2*a^2*theta0).
+            # With this fork's own tropopause (14.6 km, where the column goes isothermal), its
+            # 10 K equator-pole contrast and 358 K surface, at Omega = 3.17e-4:
+            #
+            #     Earth        Ro_T = 8.53e-02   edge 21.6 deg   (observed 20-30, so the
+            #                                                     formula is behaving)
+            #     ATHAD_PERID  Ro_T = 9.81e-04   edge  2.32 deg  -> scale 2.32/21.6 = 0.107
+            #     ATHAD_COND   Ro_T = 9.38e-04   edge  2.27 deg  -> scale 0.105
+            #
+            # 0.107 against the configured 0.11 — the sibling's value survives here because the
+            # two forks have nearly the same tropopause height and the SAME rotation rate, not
+            # because it was carried across. If omega is ever re-derived for this later epoch
+            # (see the note on it), this number moves with the square root of Omega^-2, i.e.
+            # linearly in 1/Omega, and must be redone.
             ('cell_lat_scale', 'ATHAD_COND: Hadley-edge latitude as a fraction of Earth\'s; 0.11 = Held-Hou edge for this rotation rate and contrast, 1.0 = Earth', 'double', 0.11),
             ('cell_amp_mode', 'ATHAD_COND: scale the prescribed velocity amplitudes with cell_lat_scale; 0 = off, 1 = v,w by s (continuity), 2 = v by s and w by s^2 (angular momentum)', 'int', 0),
             ('n_cells_hemisphere', 'ATHAD_COND: prescribed circulation cells per hemisphere; 5 = this regime (Rhines ~21 deg bands), 3 = Earth', 'int', 5),
@@ -502,31 +539,20 @@ def main():
             # were INERT — MultiLayerRadiation built its own albedo from bare literals and
             # never read them, so the pole/equator pair was configuration theatre.
             #
-            # albedo_surface: THE SURFACE HERE IS A 240 C SEA, NOT ATHAD'S MAGMA OCEAN, and
-            # this number was 0.08 with a basaltic-melt justification attached to it until
-            # 2026-08-20 -- an inherited constant carrying the parent's conditions, which is
-            # the defect pattern this fork was forked to expose. 0.06 is a water surface:
-            # a calm sea is 0.03-0.06 broadband at small zenith angle, and the global mean
-            # rises toward 0.06-0.08 once high-latitude incidence and whitecaps are included.
-            # 0.06 is the low-latitude-weighted choice, which is the right weighting because
-            # a zero-obliquity planet puts 81 % of its insolation (8/pi^2) inside the tropics
-            # and subtropics. There is no land, no snow and no sea ice -- the sea is 240 K
-            # above freezing -- so this is a single global clear-sky value, not Earth's
-            # latitude parabola, and MultiLayerRadiation's ice-albedo ramp stays dead code.
+            # albedo_surface: the surface here is a 20-150 C OCEAN, so a water value is right
+            # and 0.06 carries over from ATHAD_COND unchanged — a calm sea is 0.03-0.06 broadband
+            # at small zenith angle, rising toward 0.06-0.08 once high-latitude incidence and
+            # whitecaps enter, and the low-latitude weighting is the right one on a zero-obliquity
+            # planet. It is NOT ATHAD's 0.08 basaltic-melt value: the peridotitic melt this
+            # model is named for has solidified and is under an ocean.
             #
-            # It is also nearly unreachable: the cloud bump below overwrites it wherever
-            # condensate exists, and in this fork that is everywhere (mean planetary albedo
-            # 0.5000 to four decimals). Expect it to move the OLR by very little; measured
-            # rather than assumed -- see README.
-            #
-            # albedo_cloud: the SW albedo of an optically thick cloud top, composited over
-            # the surface value by refl = tau/(tau+2) on the condensate path. IT IS
-            # CURRENTLY THE WHOLE ANSWER. The reflectivity saturates the moment any
-            # condensate is present, and ATHAD's cloud deck is enormously thick, so the
-            # model's mean planetary albedo IS this number to four decimal places. It is
-            # therefore the second-biggest lever after the opacities, and it is an
-            # ASSUMPTION: 0.50 is a thick terrestrial water cloud. A deep, cold, slowly
-            # sedimenting Hadean deck could plausibly be brighter.
+            # BUT DO NOT CARRY OVER ATHAD_COND'S CONCLUSION THAT IT IS NOT A LEVER. There, a 25 %
+            # change in this number was invisible (albedo field 0.499996 max and min, OLR
+            # identical to nine figures) because the cloud deck saturated the compositing
+            # refl = tau/(tau+2) at 0.9999909 in every column. THIS ATMOSPHERE HOLDS 18x LESS
+            # WATER — q_H2O = 0.0207 against 0.3616 — so the deck may well not be total, and if
+            # it is not, the clear-sky surface value shows through and this becomes a real lever.
+            # Measure it here before assuming either way; the sibling's null does not transfer.
             ('albedo_surface', 'ATHAD_COND: clear-sky albedo of the liquid water sea surface', 'double', 0.06),
             ('albedo_cloud', 'ATHAD: shortwave albedo of an optically thick cloud top', 'double', 0.50),
 
@@ -598,20 +624,26 @@ def main():
             # p = 5-20 bar, T = 20-150 C, CO2 60-80 %, N2 10-20 %, SO2 ~1 % by mole.
             #
             # x_H2O IS NOT FREE: it is p_sat(T_surf)/p_0 = 0.5787/12.5 = 0.0463, set by the sea,
-            # exactly as in ATHAD_COND. CO2, N2 and SO2 fill the remaining 95.4 % in the stated
-            # dry ratio 70:15:1. Checked with the model's own resolve(): q_sat at the sea =
+            # exactly as in ATHAD_COND. CO2, N2 and the four ~1 % traces fill the remaining
+            # 95.37 % in the stated dry ratio 70:15:1:1:1:1:1 — CO2 : N2 : SO2 : CH4 : NH3 :
+            # CO : H2, i.e. all FIVE traces at ~1 mole-% — with CO2 absorbing the rounding so
+            # the eight sum to 1.0000000000 exactly. Checked with the model's own resolve(): q_sat at the sea =
             # 0.020660 against q_H2O = 0.020660, so the surface is saturated by construction,
             # and water boils at 462.96 K, so the sea is 105 K below boiling.
             #
             # DERIVED WITH THEM, all recomputed rather than scaled:
-            #   M_mean 40.368 g/mol   R_mix 205.966   M_bg 30.267   R_bg 274.702   ep 0.5952
-            #   q_H2O 0.020660   q_CO2 0.846304   q_bg 0.133036
-            #   cp 931.37   cv 725.41   r_air 16.945 kg/m3   M_nonwater 41.453   H = 7.52 km
-            #   f_bg: N2 0.8677, SO2 0.1323 (the only two non-zero), so sum(f_i*kappa_i) =
-            #   2.65e-04 -- 265x the lumped kappa_bg, carried entirely by SO2.
-            #   mc_M_max = 2.5 m/s * r_air = 42 kg/(m2 s), the siblings' density argument.
+            #   M_mean 39.279 g/mol   R_mix 211.680   M_bg 27.369   R_bg 303.794   ep 0.6583
+            #   q_H2O 0.021235   q_CO2 0.831045   q_bg 0.147719
+            #   cp 947.92   cv 736.24   r_air 16.488 kg/m3   M_nonwater 40.311   H = 7.73 km
+            #   f_bg by mass: N2 0.7677, SO2 0.1170, CO 0.0512, NH3 0.0311, CH4 0.0293, H2 0.0037
+            #   -> sum(f_i*kappa_i) = 6.39e-04, 639x the lumped kappa_bg, with NH3 and SO2
+            #   carrying most of it. Item 60's per-species split on a third composition.
+            #   mc_M_max = 2.5 m/s * r_air = 41.2 kg/(m2 s), the siblings' density argument.
             #
-            # THE FOUR REDUCING TRACES ARE ZERO HERE. ATHAD_COND carries CH4/NH3/H2/CO at
+            # ALL FIVE TRACES ARE PRESENT at ~1 mole-% each, as stated. They are NOT the
+            # inherited values: the fork initially carried ATHAD_COND's CH4/NH3/H2/CO at 0.014
+            # each simply because they came across with the clone, which is a different thing
+            # and was wrong — ATHAD_COND carries CH4/NH3/H2/CO at
             # 0.014 each and they came across with the fork, which left the mole fractions
             # summing to 1.056 and M_bg 13 % adrift -- caught by the startup print disagreeing
             # with an offline resolve(). An outgassed peridotitic inventory that is CO2-dominated
@@ -623,13 +655,13 @@ def main():
             # cold-trap or humidity number.
             # ==================================================================
             ('x_H2O', 'ATHAD_COND: mole fraction of H2O at the sea surface (saturated: p_sat(T_surf)/p_0)', 'double', 0.0463),
-            ('x_CO2', 'ATHAD_COND: mole fraction of CO2 at the sea surface (dry ratio, after the traces take 7 %)', 'double', 0.7763),
-            ('x_N2',  'ATHAD_COND: mole fraction of N2 at the sea surface (dry ratio, after the traces take 7 %)',  'double', 0.1663),
-            ('x_CH4', 'ATHAD_COND: mole fraction of CH4', 'double', 0.0),
-            ('x_NH3', 'ATHAD_COND: mole fraction of NH3', 'double', 0.0),
-            ('x_H2',  'ATHAD_COND: mole fraction of H2',  'double', 0.0),
-            ('x_CO',  'ATHAD_COND: mole fraction of CO',  'double', 0.0),
-            ('x_SO2', 'ATHAD_COND: mole fraction of SO2', 'double', 0.0111),
+            ('x_CO2', 'ATHAD_COND: mole fraction of CO2 at the sea surface (dry ratio, after the traces take 7 %)', 'double', 0.7417),
+            ('x_N2',  'ATHAD_COND: mole fraction of N2 at the sea surface (dry ratio, after the traces take 7 %)',  'double', 0.1590),
+            ('x_CH4', 'ATHAD_COND: mole fraction of CH4', 'double', 0.0106),
+            ('x_NH3', 'ATHAD_COND: mole fraction of NH3', 'double', 0.0106),
+            ('x_H2',  'ATHAD_COND: mole fraction of H2',  'double', 0.0106),
+            ('x_CO',  'ATHAD_COND: mole fraction of CO',  'double', 0.0106),
+            ('x_SO2', 'ATHAD_COND: mole fraction of SO2', 'double', 0.0106),
 
             # ep = R_background / R_H2O = 296.8/461.5. NOTE: the dilute approximation this
             # constant serves, q_sat = ep*E/(p-(1-ep)*E), is INVALID here for the same reason
@@ -639,7 +671,7 @@ def main():
             # than one that is valid over none, because it looks right in the printouts.
             # The exact mass-fraction form is used everywhere; ep remains only where a
             # genuine gas-constant ratio is wanted.
-            ('ep', 'ATHAD_COND: ratio of the background-mixture to water-vapour gas constants', 'double', 0.5952),
+            ('ep', 'ATHAD_COND: ratio of the background-mixture to water-vapour gas constants', 'double', 0.6583),
             ('hp', 'water vapour pressure at T = 0°C: E = 6.1 hPa', 'double', 6.1078),
 
             # ATHAD_COND: "Air" means the NON-CONDENSABLE BACKGROUND (everything but H2O and
@@ -650,7 +682,7 @@ def main():
             # alone. It is not air. The quantity that matters for saturation is M_nonwater
             # (CO2 + background, 40.12 g/mol here, was 42.88), a different number and a
             # different function.
-            ('R_Air', 'ATHAD_COND: specific gas constant of the non-condensable background in J/(kg*K)', 'double', 274.7),
+            ('R_Air', 'ATHAD_COND: specific gas constant of the non-condensable background in J/(kg*K)', 'double', 303.8),
             ('R_WaterVapour', 'specific gas constant of water vapour in J/(kg*K)', 'double', 461.5),
             ('r_water_vapour', 'density of saturated water vapour in kg/m³ at 10°C', 'double', 0.0094),
             ('R_co2', 'specific gas constant of CO2 in J/(kg*K)', 'double', 188.9),
@@ -664,8 +696,8 @@ def main():
             # in the dry CO2 air aloft (both at 513 K, so that ratio is composition and not
             # temperature), so this constant is only the fallback; cp_of() gives the local
             # value. cv_l = cp_l - R_mix = 1372.6 - 299.2.
-            ('cp_l', 'ATHAD_COND: specific heat capacity of the mixture at constant pressure in J/(kg K)', 'double', 931.4),
-            ('cv_l', 'ATHAD_COND: specific heat capacity of the mixture at constant volume in J/(kg K)', 'double', 725.4),
+            ('cp_l', 'ATHAD_COND: specific heat capacity of the mixture at constant pressure in J/(kg K)', 'double', 947.9),
+            ('cv_l', 'ATHAD_COND: specific heat capacity of the mixture at constant volume in J/(kg K)', 'double', 736.2),
             ('lamda', 'heat transfer coefficient of air in W/(m K)', 'double', 0.0262),
             ('r_co2', 'density of CO2 in kg/m³ at 25°C', 'double', 0.0019767),
             ('gam', 'constant slope of temperature    gam = 6.5 K/1000 m', 'double', 0.0065),
@@ -704,16 +736,26 @@ def main():
             # (RHS_Atm_Turb.cpp: coeff_energy, coeff_MC_q, coeff_L) and, unlike in ATHAD, it
             # is NOT the value the field is initialised to: the water field is a profile
             # here, running from c_0 at the sea to c_h2o_dry_top above the cold trap.
-            ('c_0', 'ATHAD_COND: reference water vapour mass fraction at the sea surface in kg/kg', 'double', 0.0207),
+            ('c_0', 'ATHAD_COND: reference water vapour mass fraction at the sea surface in kg/kg', 'double', 0.0212),
 
-            # ATHAD_COND: the water that survives above the cold trap, as a MASS fraction.
-            # This is the model's link to the quoted composition: the literature's "H2O
-            # 0.4-2 % by mole" is the DRY atmosphere, x_H2O = 0.010 of a mixture that is now
-            # 39.90 g/mol (42.63 before the trace gases), i.e. q = 0.00452 kg/kg (was
-            # 0.00423). initWaterWapour() uses it as the floor
-            # under the saturation profile, and the height at which the two cross IS the
-            # cold trap — a computed quantity, not a prescribed level.
-            ('c_h2o_dry_top', 'ATHAD_COND: water vapour mass fraction above the cold trap in kg/kg', 'double', 0.00452),
+            # ATHAD_PERID: the water that survives above the cold trap, as a MASS fraction —
+            # DERIVED FROM THIS COLUMN, not inherited. The model's own printColumnProfile puts
+            # the temperature minimum at level 24, 14.59 km, 254.0 K, 1.2330 bar (the profile is
+            # isothermal above it), and q_sat there is 3.949e-04 — the least water the column can
+            # hold anywhere, which is what "survives the cold trap" means.
+            #
+            # The inherited ATHAD_COND value was 0.00452, i.e. 11.1x wetter than this column
+            # permits, because it belongs to a 60 bar / 513 K world. ATHAD_COND's own README
+            # already carries "the cold trap is eight times too wet" as an open item; forking
+            # imported that defect and made it worse. initWaterWapour() uses this as the floor
+            # under the saturation profile and the height where the two cross IS the cold trap,
+            # so an over-wet floor moves a computed quantity.
+            #
+            # SENSITIVE TO t_skin, which sets the minimum temperature, and that coupling was
+            # exercised rather than assumed: at the inherited t_skin = 254.0 the trap sat at
+            # level 24 with q_sat = 4.06e-04; at the measured 262.91 it moves to level 23 and
+            # 7.59e-04, a factor of 1.9 for 8.9 K. Settle t_skin before quoting this.
+            ('c_h2o_dry_top', 'ATHAD_COND: water vapour mass fraction above the cold trap in kg/kg', 'double', 7.59e-4),
 
             # ATHAD_COND: the CO2 field is a MASS FRACTION, not ppm. At 62% by mass at the
             # sea surface, ppm is meaningless. This epoch has no biosphere and no vegetation;
@@ -722,7 +764,7 @@ def main():
             # mixed and conserved, and that is an ASSUMPTION this model makes rather than a
             # result it derives. q_CO2 = 0.3459*44.010/27.789 = 0.5478 at the surface (0.6233
             # before the trace gases took 7 mole-% out of the CO2/N2 share).
-            ('co2_0', 'ATHAD_COND: reference CO2 mass fraction at the sea surface in kg/kg', 'double', 0.8463),
+            ('co2_0', 'ATHAD_COND: reference CO2 mass fraction at the sea surface in kg/kg', 'double', 0.8310),
             ('co2_scale', 'multiplier applied to the whole CO2 field for sensitivity experiments (1.0 = field as built; 2.0 = doubled CO2)', 'double', 1.0),
 
             # ATHAD: no land, so no land/ocean humidity split — a single surface relative

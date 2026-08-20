@@ -36,39 +36,36 @@ static void check_true(const char* what, bool cond)
 
 // The nominal run point. These four numbers are the model's inputs; everything else in
 // this file is derived from them, and the config must agree.
-static const double P_SURF_BAR = 60.0;
-static const double T_SURF     = 513.15;      // 240 C, the midpoint of 230-250 C
-static const double T_POLE     = 503.15;      // 230 C
+static const double P_SURF_BAR = 12.5;
+static const double T_SURF     = 358.15;      // 85 C, the midpoint of 20-150 C
+static const double T_POLE     = 348.15;      // 75 C
 
-// The DRY composition — what the atmosphere is above the cold trap, and the figure the
-// literature quotes: H2O 0.4-2 %, CO2 89-95 %, N2 5-20 %. Midpoints, renormalised.
+// THE STATED DRY RATIO, which is what the surface mixture inherits: CO2 60-80 %, N2 10-20 %,
+// and SO2 / CH4 / NH3 / CO / H2 each ~1 % by mole. Midpoints, as parts of a whole that the
+// water then displaces from the top.
 //
-// These stay as the literature REFERENCE and as the source of the CO2:N2 ratio the surface
-// mixture inherits. They are no longer the whole dry atmosphere: since 2026-08-20 the five
-// trace gases are present at ATHAD's 1.4 mole-% each, and above the cold trap — where the
-// water is gone — they are 15.7 % of what is left, which pushes CO2 to 77.4 % and OUT of the
-// quoted 89-95 % band. That is a deliberate departure from the quoted composition; see the
-// composition block in param.py.
-static const double X_H2O_DRY  = 0.010;
-static const double X_CO2_DRY  = 0.920;
-static const double X_N2_DRY   = 0.070;
+// Unlike ATHAD_COND's, these are NOT a literature dry-atmosphere composition quoted at some
+// other height -- they are the outgassed inventory of a peridotitic melt, stated directly.
+// So there is no "the composition and the temperature describe different heights" trap here;
+// what the cold trap does to the water is a separate, computed thing (see c_h2o_dry_top).
+static const double R_CO2      = 70.0;
+static const double R_N2       = 15.0;
+static const double R_TRACE    = 1.0;         // each of SO2, CH4, NH3, CO, H2
+static const double R_SUM      = R_CO2 + R_N2 + 5.0 * R_TRACE;   // 90
 
-// The five trace gases, at ATHAD's mole fraction. Non-condensable and well mixed, so the
-// same fraction applies at every level; what changes with height is everyone else's share.
-static const double X_TRACE    = 0.014;       // each of CH4, NH3, H2, CO, SO2
-static const double X_TRACE_5  = 5.0 * X_TRACE;
-
-// The SURFACE composition, copied from param.py. These are the config's x_H2O/x_CO2/x_N2
-// and r_air; the checks below re-derive them from T_SURF and P_SURF_BAR and fail if the
-// config has drifted from the physics it is supposed to encode.
-static const double X_H2O_CFG  = 0.5578;
-static const double X_CO2_CFG  = 0.3459;
-static const double X_N2_CFG   = 0.0263;
-static const double R_AIR_CFG  = 39.08;       // [kg/m3]
+// The SURFACE composition, copied from param.py. The checks below re-derive them from
+// T_SURF and P_SURF_BAR and fail if the config has drifted from the physics it encodes.
+static const double X_H2O_CFG  = 0.0463;
+static const double X_CO2_CFG  = 0.7417;
+static const double X_N2_CFG   = 0.1590;
+static const double X_TRACE    = 0.0106;      // each of the five
+static const double R_AIR_CFG  = 16.49;       // [kg/m3]
+static const double T_SKIN     = 262.91;      // config t_skin — the isothermal top
+static const double C_DRY_TOP  = 7.59e-4;     // c_h2o_dry_top: q_sat at the cold trap
 
 int main()
 {
-    std::printf("\nATHAD_COND column self-test  (%.0f bar, %.2f K)\n\n", P_SURF_BAR, T_SURF);
+    std::printf("\nATHAD_PERID column self-test  (%.1f bar, %.2f K)\n\n", P_SURF_BAR, T_SURF);
 
     // ------------------------------------------------------------------
     // 1. The regime itself. ATHAD's invariant 2 is that water is supercritical; this
@@ -83,12 +80,12 @@ int main()
     // Boiling point at the surface pressure: the sea must not be boiling, or there is no
     // liquid ocean to hold the surface layer at saturation.
     const double T_boil = SaturationH2O::dewPoint(P_SURF_BAR * 1000.0);
-    check("boiling temperature at 60 bar",            T_boil, 548.7, 2e-3);
+    check("boiling temperature at 12.5 bar",          T_boil, 462.96, 2e-3);
     check_true("the sea is below boiling at the equator",  T_SURF < T_boil);
     check_true("the sea is below boiling at the pole",     T_POLE < T_boil);
     // For the record, and because the 27 bar corner of the input range fails this:
-    std::printf("      (at 27 bar water boils at %.1f K, so a 503 K surface there is dry)\n",
-                SaturationH2O::dewPoint(27000.0));
+    std::printf("      (the sea is %.1f K below boiling; ATHAD_COND's margin was 35 K)\n",
+                T_boil - T_SURF);
 
     // ------------------------------------------------------------------
     // 2. The surface is SATURATED. This is the modelling decision that separates
@@ -98,30 +95,33 @@ int main()
     // ------------------------------------------------------------------
     std::printf("\n the surface mole fraction is set by the sea, not by the dry composition\n");
     const double p_sat_surf = SaturationH2O::saturationPressure(T_SURF);        // [hPa]
-    check("p_sat(T_surf) [bar]",                      p_sat_surf / 1000.0, 33.470, 5e-3);
+    check("p_sat(T_surf) [bar]",                      p_sat_surf / 1000.0, 0.5787, 5e-3);
 
     const double x_H2O_surf = p_sat_surf / (P_SURF_BAR * 1000.0);
-    check("saturated x_H2O at the surface",           x_H2O_surf, 0.5578, 5e-3);
-    check_true("which is 50x the dry-atmosphere value",
-               x_H2O_surf > 50.0 * X_H2O_DRY);
+    check("saturated x_H2O at the surface",           x_H2O_surf, 0.0463, 5e-3);
+    check_true("water is a minor constituent here, unlike in ATHAD_COND",
+               x_H2O_surf < 0.10);
 
     // The rest of the surface column is the five trace gases at their fixed 1.4 % each,
     // and then CO2 and N2 in the dry ratio within whatever is left. The order matters and
     // is the physics: x_H2O is not free — it is p_sat(T_surf)/p_0, set by the sea — so
     // anything added to the mixture displaces CO2 and N2, never water.
-    const double x_rest      = 1.0 - x_H2O_surf - X_TRACE_5;
-    const double dry_non_h2o = X_CO2_DRY + X_N2_DRY;
-    const double x_CO2_surf  = x_rest * X_CO2_DRY / dry_non_h2o;
-    const double x_N2_surf   = x_rest * X_N2_DRY  / dry_non_h2o;
-    check("saturated x_CO2 at the surface",           x_CO2_surf, 0.3459, 1e-2);
-    check("saturated x_N2  at the surface",           x_N2_surf,  0.0263, 2e-2);
+    const double x_rest      = 1.0 - x_H2O_surf;
+    const double x_CO2_surf   = x_rest * R_CO2   / R_SUM;
+    const double x_N2_surf    = x_rest * R_N2    / R_SUM;
+    const double x_trace_surf = x_rest * R_TRACE / R_SUM;
+    check("x_CO2 at the surface",                     x_CO2_surf,   0.7417, 1e-2);
+    check("x_N2  at the surface",                     x_N2_surf,    0.1590, 2e-2);
+    check("each trace at the surface",                x_trace_surf, 0.0106, 2e-2);
+    check_true("CO2 is inside the stated 60-80 %",    x_CO2_surf > 0.60 && x_CO2_surf < 0.80);
+    check_true("N2 is inside the stated 10-20 %",     x_N2_surf  > 0.10 && x_N2_surf  < 0.20);
 
     // ...and the config carries exactly those, to the four decimals it stores them in.
     check("config x_H2O matches the saturated value", X_H2O_CFG, x_H2O_surf, 1e-3);
-    check("config x_CO2 matches the saturated value", X_CO2_CFG, x_CO2_surf, 2e-3);
-    check("config x_N2  matches the saturated value", X_N2_CFG,  x_N2_surf,  2e-3);
+    check("config x_CO2 matches the derived value",   X_CO2_CFG, x_CO2_surf, 2e-3);
+    check("config x_N2  matches the derived value",   X_N2_CFG,  x_N2_surf,  2e-3);
     check_true("config mole fractions sum to 1",
-               std::fabs(X_H2O_CFG + X_CO2_CFG + X_N2_CFG + X_TRACE_5 - 1.0) < 1e-9);
+               std::fabs(X_H2O_CFG + X_CO2_CFG + X_N2_CFG + 5.0 * X_TRACE - 1.0) < 1e-9);
 
     // ------------------------------------------------------------------
     // 3. The two mixtures, from the model's own resolve(). The config's x_* and r_air are
@@ -134,48 +134,61 @@ int main()
         AtmMixture::resolve(X_H2O_CFG, X_CO2_CFG, X_N2_CFG,
                             X_TRACE, X_TRACE, X_TRACE, X_TRACE, X_TRACE);
     check_true("mole fractions sum to 1",             S.valid);
-    check("M_mean [g/mol]",     S.M_mean * 1000.0,    27.79,  1e-2);
-    check("R_mix [J/(kg K)]",   S.R_mix,              299.2,  1e-2);
-    check("q_H2O [kg/kg]",      S.q_H2O,              0.3616, 2e-2);
+    check("M_mean [g/mol]",     S.M_mean * 1000.0,    39.278, 1e-2);
+    check("R_mix [J/(kg K)]",   S.R_mix,              211.68, 1e-2);
+    check("q_H2O [kg/kg]",      S.q_H2O,              0.0212, 2e-2);
+    check_true("CO2 is the bulk of the mass here",    S.q_CO2 > 0.80);
 
-    // The background is no longer N2: it is N2 plus the five traces, and by MASS the traces
-    // are 71 % of it. R_bg lands within 0.3 % of ATHAD's 317.26 for that reason.
-    check("M_bg [g/mol]",       S.M_bg * 1000.0,      26.138, 1e-3);
-    check("R_bg [J/(kg K)]",    S.R_bg,               318.10, 1e-3);
-    check_true("N2 is a minority of the background by mass", S.f_bg[0] < 0.35);
+    // The background is N2 plus the five ~1 % traces. N2 still dominates it by mass here --
+    // 77 % -- unlike ATHAD and ATHAD_COND, where the traces carry ~71 % of the background,
+    // because there the traces are 1.4 % against a much smaller N2 share.
+    check("M_bg [g/mol]",       S.M_bg * 1000.0,      27.369, 1e-3);
+    check("R_bg [J/(kg K)]",    S.R_bg,               303.79, 1e-3);
+    check_true("N2 is the majority of the background by mass", S.f_bg[0] > 0.70);
     check_true("the six background fractions sum to 1",
                std::fabs(S.f_bg[0]+S.f_bg[1]+S.f_bg[2]+S.f_bg[3]+S.f_bg[4]+S.f_bg[5]-1.0) < 1e-9);
 
     const double cp_surf = AtmMixture::cp_of(S.q_H2O, S.q_CO2, T_SURF, S.M_bg);
-    check("cp(T_surf) [J/(kg K)]", cp_surf,           1372.6, 3e-2);
+    check("cp(T_surf) [J/(kg K)]", cp_surf,           947.9, 3e-2);
 
     // r_air is the column's anchor: ThermoAtm::densities() sets p_stat[0] = 1e-2*r_air*
     // R_mix*T_surf, so r_air and R_mix together ARE the 60 bar. Getting this wrong does not
     // fail loudly — it quietly runs a different atmosphere.
     const double rho_surf = P_SURF_BAR * 1.0e5 / (S.R_mix * T_SURF);
-    check("rho_surf [kg/m3]",                         rho_surf, 39.08, 2e-2);
+    check("rho_surf [kg/m3]",                         rho_surf, 16.49, 2e-2);
     check("config r_air reproduces it",               R_AIR_CFG, rho_surf, 1e-3);
     check("...and so the anchor gives back p_0 [hPa]",
           1e-2 * R_AIR_CFG * S.R_mix * T_SURF, P_SURF_BAR * 1000.0, 1e-3);
     const double H_surf = S.R_mix * T_SURF / 9.81;
-    check("scale height [m]",   H_surf,               15650.0, 3e-2);
+    check("scale height [m]",   H_surf,               7728.0, 3e-2);
 
-    std::printf("\n mixture properties above the cold trap (the dry composition)\n");
-    // Built from the SURFACE mixture with the water taken out, not from the literature
-    // midpoints: the trace gases do not condense, so above the cold trap they keep their
-    // partial pressures while water loses all but x = 0.010 of its own, and everyone else's
-    // fraction rises to fill the gap. CO2 ends at 77.4 %, below the quoted 89-95 %.
-    const double dry_scale = 0.990 / (1.0 - X_H2O_CFG);
-    const AtmMixture::Composition D =
-        AtmMixture::resolve(X_H2O_DRY, X_CO2_CFG * dry_scale, X_N2_CFG * dry_scale,
-                            X_TRACE * dry_scale, X_TRACE * dry_scale, X_TRACE * dry_scale,
-                            X_TRACE * dry_scale, X_TRACE * dry_scale);
-    check_true("mole fractions sum to 1",             D.valid);
-    check("M_mean [g/mol]",     D.M_mean * 1000.0,    39.897, 1e-3);
-    check("R_mix [J/(kg K)]",   D.R_mix,              208.40, 1e-3);
-    check("q_H2O [kg/kg]",      D.q_H2O,              0.00452, 2e-2);
-    check("dry x_CO2 is out of the quoted 0.89-0.95 band",
-          X_CO2_CFG * dry_scale, 0.7744, 1e-2);
+    const double M_nw_surf = AtmMixture::M_nonwater(S.q_H2O, S.q_CO2, S.M_bg);
+
+    std::printf("\n the cold trap, and the water that survives it\n");
+    // c_h2o_dry_top is NOT a literature figure here and NOT inherited: it is q_sat at the
+    // coldest point of this model's own column. printColumnProfile puts the temperature
+    // minimum at level 24 -- 14.59 km, 254.0 K, 1.2330 bar -- above which the profile is
+    // isothermal, so that is where the water content is set for everything above.
+    //
+    // ATHAD_COND's value was 0.00452 and belongs to a 60 bar / 513 K column; carried across
+    // unchanged it is 11.1x wetter than this column can hold. That fork's own README lists
+    // "the cold trap is eight times too wet" as an open item, so the fork imported a known
+    // defect -- which is exactly what a self-test is for.
+    // The trap is level 23 -- 13.57 km, 263.7 K, 1.6082 bar -- one level BELOW where the
+    // profile goes isothermal at t_skin, because q_sat keeps falling until the temperature
+    // stops falling and then rises again as pressure drops. Its position moves with t_skin:
+    // at the inherited 254.0 K it was level 24 and 4.06e-04, at the measured 262.91 it is
+    // level 23 and 7.59e-04. That coupling is why both numbers are checked here.
+    const double q_cold = SaturationH2O::saturationMassFractionAt(263.7, 1608.19, M_nw_surf);
+    check("q_sat at the cold trap [kg/kg]",           q_cold, C_DRY_TOP, 2e-2);
+    check_true("the trap is colder than the isothermal top is warm",
+               263.7 - T_SKIN < 1.0 && 263.7 > T_SKIN);
+    check_true("q_sat rises again above the trap",
+               SaturationH2O::saturationMassFractionAt(T_SKIN, 1103.05, M_nw_surf) > q_cold);
+    check("config c_h2o_dry_top matches it",          C_DRY_TOP, q_cold, 2e-2);
+    check_true("and it is far drier than the sea",    q_cold < 0.05 * S.q_H2O);
+    check_true("ATHAD_COND's 0.00452 would be far too wet here", 0.00452 > 5.0 * q_cold);
+    check_true("and the inherited 254 K trap value would be too dry", 4.06e-4 < 0.7 * q_cold);
 
     // ------------------------------------------------------------------
     // 4. Why the dry adiabat cannot be used here.
@@ -194,15 +207,14 @@ int main()
     // it weighs the non-water gas as if the 41 % CO2 were not there. That is a 29 % error
     // in the single quantity this whole model turns on, and it is the same confusion
     // CLAUDE.md records M_nonwater itself having had.
-    const double M_nw_surf = AtmMixture::M_nonwater(S.q_H2O, S.q_CO2, S.M_bg);
-    check("M_nonwater at the surface [g/mol]",        M_nw_surf * 1000.0, 40.118, 1e-2);
+    check("M_nonwater at the surface [g/mol]",        M_nw_surf * 1000.0, 40.311, 1e-2);
 
     const double q_sat_surf = SaturationH2O::saturationMassFractionAt(
                                   T_SURF, P_SURF_BAR * 1000.0, M_nw_surf);
     check("q_sat at the sea surface [kg/kg]",         q_sat_surf, S.q_H2O, 5e-2);
 
     const double L_surf = SaturationH2O::latentHeat(T_SURF);
-    check("latent heat at 513 K [J/kg]",              L_surf, 1.72e6, 5e-2);
+    check("latent heat at T_surf [J/kg]",             L_surf, 2.268e6, 5e-2);
 
     // NOTE: dqSatdT is the DILUTE Clausius-Clapeyron form, q_sat*L/(R_v T^2). At q_sat =
     // 0.35 it is not the derivative of the exact mass fraction — see the exact form below,
@@ -226,12 +238,17 @@ int main()
                                      M_nw_surf, cp_surf, S.R_mix, 9.81);
     std::printf("      dry %.3f K/km   saturated %.3f K/km   (truncated form would give %.3f)\n",
                 gamma_dry * 1000.0, gamma_moist * 1000.0, gamma_trunc * 1000.0);
-    check("dry lapse [K/km]",                         gamma_dry * 1000.0,   7.15, 1e-2);
-    check("saturated lapse [K/km]",                   gamma_moist * 1000.0, 4.84, 2e-2);
+    check("dry lapse [K/km]",                         gamma_dry * 1000.0,   10.35, 1e-2);
+    check("saturated lapse [K/km]",                   gamma_moist * 1000.0, 5.70, 2e-2);
     check_true("the saturated lapse is well below the dry one",
                gamma_moist < 0.75 * gamma_dry);
-    check_true("...and well above what the truncated form claims",
-               gamma_moist > 4.0 * gamma_trunc);
+    // The margin over the truncated form is 1.65x here against ATHAD_COND's 6.8x, and that
+    // is PHYSICS, not a loosened tolerance. g/(cp + L*dq_sat/dT) drops the pressure dependence
+    // of q_sat, which matters in proportion to how much of the mixture is water: 56 mole-% in
+    // ATHAD_COND, 4.6 % here. So the wrong formula looks nearly right in this fork -- which
+    // makes it more dangerous, not less, and is why the check stays rather than being deleted.
+    check_true("...and still above what the truncated form claims",
+               gamma_moist > 1.4 * gamma_trunc);
 
     // Earth, as a control on the formula itself: the standard saturated adiabatic lapse
     // rate at 300 K / 1000 hPa is ~3.6-3.9 K/km. A formula that only ever runs at 60 bar

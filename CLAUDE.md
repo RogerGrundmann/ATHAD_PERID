@@ -1,28 +1,40 @@
-# ATHAD_COND — the Hadean atmosphere after condensation
+# ATHAD_PERID — the atmosphere a peridotitic magma ocean left behind
 
-An atmospheric general-circulation model of the Earth in the epoch that follows
-[ATHAD](../ATHAD): the magma ocean has quenched, the steam atmosphere has rained out into a
-liquid ocean, and what remains above it is a **CO₂-dominated atmosphere of 27–100 bar over a
-230–250 °C sea**. Nominal run point: **60 bar / 513 K**.
+An atmospheric general-circulation model of the Hadean epoch that follows
+[ATHAD_COND](../ATHAD_COND): the magma ocean has solidified, the steam has long since rained
+out, and the volatiles a **peridotitic** (ultramafic, mantle-composition) melt outgassed have
+cooled into a **CO₂-dominated atmosphere of 5–20 bar over a 20–150 °C ocean**. Nominal run
+point: **12.5 bar / 358.15 K (85 °C)**, the midpoint of both ranges.
 
-**Forked from `ATHAD` @ `29ca2f9` (2026-08-13), carrying its full history**, so fixes
-cherry-pick in both directions (`git remote athad` points at the sibling working copy).
-ATHAD in turn came from `ATOM_Precipitation` @ `1e3f319`. There is still no paleogeography
-and no time-slice series — ATHAD_COND is one epoch. There is now an **ocean**, but as a
-boundary condition only: no prognostic hydrosphere.
+**"Peridotitic" names where the volatiles came from, not the present surface.** The melt is
+gone; what this model carries is its outgassed inventory, cooled. So the thermodynamic regime
+is ATHAD_COND's — subcritical water, a liquid sea, condensation live from the surface up — and
+NOT ATHAD's supercritical column. The fork is cut from ATHAD_COND for that reason and keeps its
+invariants rather than inverting them.
 
-**The defining inversion.** ATHAD's central fact is that water is supercritical from the
-ground to ~177 km, so nothing condenses and half the code exists to make condensation a
-genuine no-op. Here water is subcritical everywhere and **condensation is live from the sea
-surface up**. Every path ATHAD made inert is one this model depends on. See "Four
-invariants" below — invariant 2 is inverted, the other three are not.
+**Forked from `ATHAD_COND` @ `3f0b05d` (2026-08-20), carrying its full history** — 63 commits
+reaching back to ATHAD's own fork-from-ATOM commit — so fixes cherry-pick in every direction
+(`git remote cond` and `git remote athad` point at the two sibling working copies). ATHAD_COND
+came from `ATHAD` @ `29ca2f9`, ATHAD from `ATOM_Precipitation` @ `1e3f319`. There is no
+paleogeography and no time-slice series — ATHAD_PERID is one epoch. There is an **ocean**, but
+as a boundary condition only: no prognostic hydrosphere.
+
+**Where it differs from ATHAD_COND:** the same physics at a fifth of the pressure and 155 K
+colder, with a genuinely CO₂-dominated composition — 74 mole-% CO₂ against COND's 35 %, and
+water down from 56 mole-% to 4.6 %. The sea still sets the surface humidity, but a much drier
+atmosphere sits on it, and that difference is why several of ATHAD_COND's measured nulls
+(the surface albedo especially) must be re-measured here rather than assumed.
+
+**EVERYTHING IN THIS FILE BELOW THE COMPOSITION SECTION IS INHERITED FROM ATHAD_COND AND WAS
+MEASURED ON IT** — a 60 bar / 513 K world — unless it says otherwise. The code is shared and
+the reasoning travels; the numbers do not.
 
 ## Build, run, test
 
 ```bash
-make cond                                       # -> cli/cond
+make perid                                      # -> cli/perid
 make test                                       # IAPWS + column self-tests, run these first
-cd python && OMP_NUM_THREADS=8 ../cli/cond config_cond.xml
+cd python && OMP_NUM_THREADS=8 ../cli/perid config_perid.xml
 ```
 
 **`atom_log.txt` is reserved by the model — never redirect a run into it.**
@@ -31,13 +43,13 @@ which truncates it. A shell redirect to the same name loses the whole console ou
 the model's handle closes; a 100-iteration run's printouts were destroyed this way. Use any
 other filename.
 
-Output lands in `python/output_Hadean_condensation/` — the ATOM line's convention
+Output lands in `python/output_Hadean_peridotite/` — the ATOM line's convention
 (`output_<name>/`, underscore, relative to the run directory; the giant-planet
 siblings hyphenate instead).
 
 `make` regenerates the parameter bindings from `param.py` first. The generated files
-(`atmosphere/*.inc`, `python/atmosphere_pxd.pxi`, `python/pycond.pyx`,
-`cli/config_cond.xml`, `python/config_cond.xml`) are **tracked on purpose**, so a
+(`atmosphere/*.inc`, `python/atmosphere_pxd.pxi`, `python/pyperid.pyx`,
+`cli/config_perid.xml`, `python/config_perid.xml`) are **tracked on purpose**, so a
 `param.py` change shows its full effect in the diff. Regenerate and commit them together.
 
 Removing a parameter from `param.py` deletes a C++ member, so it must be removed
@@ -45,56 +57,44 @@ together with its uses or the build breaks.
 
 ## Atmospheric composition
 
-Mole fractions are the input; the model works in mass fractions. **The configured mole
-fractions are the SEA-SURFACE values, not the quoted dry composition** — see below.
+Mole fractions are the input; the model works in mass fractions. **The configured mole fractions
+are the SEA-SURFACE values.** Stated inputs: p = 5–20 bar, T = 20–150 °C, CO₂ 60–80 %,
+N₂ 10–20 %, and SO₂, CH₄, NH₃, CO, H₂ each ~1 % by mole.
 
-**The five trace gases carry ATHAD's mole fractions since 2026-08-20** (they were zero
-before). x(H₂O) is not free — it is `p_sat(T_surf)/p_0` — so they displace CO₂ and N₂,
-and above the cold trap they are 15.7 % of the dry atmosphere, which puts CO₂ at 77.4 %,
-**below the quoted 89–95 % band**. That is a deliberate departure, not a refinement.
-
-| | at the sea (config) | above the cold trap |
+| Species | Mole frac. | Mass frac. |
 |---|---|---|
-| x(H₂O) / x(CO₂) / x(N₂) | 0.5578 / 0.3459 / 0.0263 | 0.010 / 0.7744 / 0.0589 |
-| x(CH₄) = x(NH₃) = x(H₂) = x(CO) = x(SO₂) | 0.014 each (7 % total) | 0.0313 each (15.7 %) |
-| M_mean [g/mol] | 27.79 | 39.90 |
-| R_mix [J/(kg·K)] | 299.2 | 208.4 |
-| cp [J/(kg·K)] | 1372.6 | 1042.5 † |
+| H₂O | 0.0463 | 0.021235 |
+| CO₂ | 0.7417 | 0.831045 |
+| N₂ | 0.1590 | — |
+| SO₂ / CH₄ / NH₃ / CO / H₂ | 0.0106 each | — |
+| background (N₂ + the five traces) | 0.2120 | 0.147719 |
 
-† **The 1042.5 is the dry composition at the SEA-SURFACE temperature**, not at the cold
-trap — `cp_of(dry, 513.15 K)`; at cold-trap conditions it is **886.4** (the Shomate fits
-clamp below 298 K). This table warns two paragraphs above that the stated composition and
-the stated temperature describe different heights — and then does it itself, for this one
-entry. The 1372.6 is sound: it is `cp_of` at the sea, and it is what `cp_l` is set to.
+- **M_mean = 39.278 g/mol**, **R_mix = 211.68 J/(kg·K)**
+- **Background** (everything but H₂O and CO₂): M_bg = 27.369 g/mol, **R_bg = 303.79 J/(kg·K)**.
+  This is what the `R_Air` parameter means — it is not air. `M_nonwater` = 40.311 g/mol is the
+  different number that matters for saturation.
+- **p_surf = 12.5 bar**, **T_surf = 358.15 K** (prescribed), **ρ_surf = 16.49 kg/m³**
+- cp = 947.9, cv = 736.2 J/(kg·K); **scale height 7.73 km**, dry lapse **10.35 K/km**
 
-| q_H₂O / q_CO₂ [kg/kg] | 0.3616 / 0.5478 | 0.00452 / 0.8542 |
+**`x_H₂O` is not an input.** It is `p_sat(358.15 K)/p_0` = 0.5787/12.5 = 0.0463, set by the sea.
+CO₂, N₂ and the five traces fill the remaining 95.37 % in the stated dry ratio
+70 : 15 : 1 : 1 : 1 : 1 : 1, with CO₂ absorbing the rounding so the eight sum to 1.0000000000.
+Verified: `q_sat` at the sea = 0.021233 against `q_H₂O` = 0.021235, so **the surface is saturated
+by construction**; water boils at 462.96 K, leaving the sea 105 K below boiling.
 
-- **p_surf = 60 bar**, **T_surf = 513.15 K** (prescribed), **ρ_surf = 39.08 kg/m³**
-- **scale height 15.7 km** at the sea (ATHAD: 59.3 km) — the shell is 120 km, not 300
-- **Background** (everything except H₂O and CO₂) is N₂ **plus the five traces**:
-  M_bg = 26.138 g/mol, **R_bg = 318.10 J/(kg·K)**, within 0.3 % of ATHAD's 317.26 because
-  in both forks the traces are ~71 % of the background by mass. This is what `R_Air`
-  means. The quantity that matters for saturation is **`M_nonwater` = 40.12 g/mol**
-  (CO₂ + background) — a different number and a different function. Passing `M_bg` where
-  `M_nonwater` belongs puts the sea surface at the wrong `q_sat`.
-- **The background's grey opacity went 1e-6 → 1.944e-3 m²/kg with them** (Σ f_i·κ_i), so
-  item 60's per-species split, which was an exact no-op at the old composition, is now
-  carrying NH₃ (48.7 %), SO₂ (36.7 %) and CH₄ (13.8 %). Had the composition changed with
-  the lumped κ still in place, five new absorbers would have run at nitrogen's opacity.
-- **The trace INVENTORY is not conserved from ATHAD**, only the fractions: 1.4 % of 250 bar
-  is 3.5 bar per gas, 1.4 % of 60 bar is 0.84 bar. Matching the numbers assumes four fifths
-  of each trace gas left with the water.
+**The five traces are ~1 % each and are NOT the inherited values.** The fork initially carried
+ATHAD_COND's CH₄/NH₃/H₂/CO at 1.4 % simply because they came with the clone, which left the mole
+fractions summing to **1.056** and `M_bg` 13 % adrift until the startup guard refused to run.
+By mass the background is N₂ 0.768, SO₂ 0.117, CO 0.051, NH₃ 0.031, CH₄ 0.029, H₂ 0.004, so
+**Σf_i·κ_i = 6.39e-04, 639× the lumped `kappa_bg`** — item 60's per-species split doing its work
+on a third composition.
 
-**Why the config does not carry the quoted composition.** The literature figure — H₂O
-0.4–2 %, CO₂ 89–95 %, N₂ 5–20 % — is the *dry* atmosphere. Air over a 240 °C sea holds
-water at its own vapour pressure: `p_sat(513.15 K) = 33.47 bar` of a 60 bar column, so
-`x_H₂O = 0.5578` at the surface. Both figures are true at different heights.
-`test/cond_column_selftest.cpp` asserts the arithmetic connecting them; `r_air` and the
-`x_*` are derived and guarded there.
+**The cold-trap floor is derived from this column, not inherited**: `c_h2o_dry_top` = 4.06e-04,
+the `q_sat` minimum at level 24 (14.59 km, 254.0 K, 1.233 bar) where the profile goes isothermal.
+ATHAD_COND's 0.00452 is **11.1× wetter than this column can hold**.
 
-Only **H₂O (`c`) and CO₂ (`co2`) are prognostic**, both as mass fractions. CO₂ is well
-mixed **in the dry air** — `q_CO2 = (1 − c)·f_CO2` — not as a uniform mass fraction, which
-is what ATHAD does and is only equivalent when the water field is uniform too.
+Only **H₂O (`c`) and CO₂ (`co2`) are prognostic**, both as mass fractions. The rest is a fixed
+well-mixed background entering `R_mix`, `cp_mix` and the opacity.
 
 ## Where the physics lives
 
@@ -117,15 +117,17 @@ is what ATHAD does and is only equivalent when the water field is uniform too.
 
 2. **Water is subcritical everywhere and condensation is LIVE.** *This is ATHAD's
    invariant 2, inverted, and it is why this fork exists.* Every path ATHAD made a genuine
-   no-op is a path that now runs. What carries over is which formulas are allowed: **never
-   Magnus** (calibrated to ~320 K, returns 1.2e7 hPa at 513 K) and **never the dilute
-   `q_sat = ep·E/(p−E)`** — invalid here for the opposite reason it was invalid in ATHAD:
-   water is 0.4 % by mole aloft, where the dilute form would be fine, and 56 % at the sea,
-   where it is not. A form valid over part of the column is worse than one valid over
-   none, because it looks right in the printouts.
+   no-op is a path that now runs. Here the sea is at **358.15 K and 12.5 bar**, water boils
+   at **462.96 K**, so the surface is 105 K below boiling — a wider margin than
+   ATHAD_COND's 35 K, and the critical point (647.096 K / 220.64 bar) is far away in both
+   coordinates. What carries over is which formulas are allowed: **never Magnus**
+   (calibrated to ~320 K) and **never the dilute `q_sat = ep·E/(p−E)`**. The dilute form is
+   *less* wrong here than in ATHAD_COND — water is 4.6 mole-% at the sea rather than 56 % —
+   which makes it more dangerous, not less: it now looks right in the printouts almost
+   everywhere. Use the exact mass-fraction form, as the rest of the tree does.
 
 3. **Radiation runs in mode 2** (direct σT⁴). Modes 0/1/3/4/5 lean on the Scotese snapshot
-   or the 280 ppm CO₂ reference; neither exists in a 92 % CO₂ atmosphere at 4.4 Ga.
+   or the 280 ppm CO₂ reference; neither exists in a 74 mole-% CO₂ Hadean atmosphere.
    Radiation must *set* the profile rather than be handed one — **and it does not yet**:
    `densities()` re-imposes the adiabat every iteration, and the OLR currently equals
    `σT_lid⁴` exactly (README item 6).
@@ -136,7 +138,8 @@ is what ATHAD does and is only equivalent when the water field is uniform too.
    Do **not** revert to `dT/dz = −g/cp`: `cosmo_lapse_fraction = 1.0` is justified in ATHAD
    *because nothing condenses there*, and that justification is void here.
    And do not use `g/(cp + L·dq_sat/dT)` — that is only the denominator of the moist-static-
-   energy balance, and it gives 0.7 K/km here against the correct 5.04.
+   energy balance. The dry lapse here is **10.35 K/km**; the moist one is what the model
+   integrates where the air is saturated.
 
 ## Assumptions vs. results — read this before quoting any number
 
@@ -172,15 +175,19 @@ Measured; see the README for the full items.
 
 ## Relationship to the family
 
-Siblings live beside this directory: `ATHAD` (the parent, ~4.4 Ga magma ocean),
-`ATOM_Precipitation` (modern Earth), `ATJUP`, `ATSAT`, `ATURAN`, `ATNEPT` (giants),
-`ASTIM` (impacts).
+Siblings live beside this directory. **Three Hadean models now, in time order:**
+`ATHAD` (~4.4 Ga magma ocean, 250 bar of supercritical steam over 1500 K), `ATHAD_COND`
+(the steam rained out: 60 bar over a 513 K sea), and this one (**12.5 bar over a 358 K
+ocean**, the outgassed inventory cooled further). Also `ATOM_Precipitation` (modern Earth),
+`ATJUP`, `ATSAT`, `ATURAN`, `ATNEPT` (giants) and `ASTIM` (impacts).
 
-C++ class, file and function names are kept **identical to ATHAD**, which keeps them
-identical to `ATOM_Precipitation`; only the outer shell is renamed (`libcond.a`,
-`cli/cond`, `config_cond.xml`, `pycond`). Preserve that. The git history is ATHAD's, and
-`git remote athad` points at the sibling working copy, so `git cherry-pick` works in both
-directions — use it rather than re-implementing a fix that already exists next door.
+**The shell is renamed and nothing else:** `libperid.a`, `cli/perid`, `config_perid.xml`,
+`pyperid`, `test/perid_column_selftest`. C++ class, file and function names stay identical
+across the family — that is what makes `git cherry-pick` work between the three Hadean
+trees, and `git remote cond` / `git remote athad` point at the sibling working copies.
+
+Preserve that. The git history is ATHAD's, so a fix made in any of the three can travel to
+the other two — use it rather than re-implementing something that already exists next door.
 
 **The pattern to expect, and why it is worse here than in ATHAD.** ATHAD found seventeen
 defects of one shape: *Earth's numbers as bare literals inside physics kernels.* At 250 bar

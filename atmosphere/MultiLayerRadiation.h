@@ -75,8 +75,8 @@ public:
         // absorbed shortwave -> extra (polar-amplified) warming that the dynamics cannot mix
         // away (unlike a forcing/nudge). Constants are tunable. NOTE the cloud SW bump below
         // overwrites this per column where cloud is present, so its net reach is cloud-limited.
-        // ATHAD_COND: the surface is a LIQUID WATER SEA at 503-513 K, and there is still no
-        // ice-albedo feedback — the sea is 240 K above freezing, so the inherited ramp
+        // ATHAD_PERID: the surface is a LIQUID WATER SEA at 348-358 K, and there is still no
+        // ice-albedo feedback — the sea is 85 K above freezing, so the inherited ramp
         // toward snow/sea-ice through 275 -> 265 K remains dead code, exactly as it was in
         // ATHAD for the opposite reason (1200 K above the thresholds rather than 240).
         //

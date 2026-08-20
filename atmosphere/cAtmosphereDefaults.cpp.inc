@@ -5,7 +5,7 @@
 void cAtmosphereModel::SetDefaultConfig() {
 
   // common section
-  output_path = "output_Hadean_condensation/";
+  output_path = "output_Hadean_peridotite/";
   config_xml_path = "../python";
   verbose = false;
   paraview_panorama_vts_flag = true;
@@ -27,9 +27,9 @@ void cAtmosphereModel::SetDefaultConfig() {
   t_surf_equator = 358.15;
   t_surf_pole = 348.15;
   cosmo_lapse_fraction = 1.0;
-  t_skin = 254.0;
+  t_skin = 262.91;
   t_skin_relax = 0.25;
-  r_air = 16.95;
+  r_air = 16.49;
   r_0_water = 997.0;
   t_equat_modern = 15.4;
   rad_equator_short = 298.0;
@@ -66,7 +66,7 @@ void cAtmosphereModel::SetDefaultConfig() {
   coeff_Dalton = 0.7;
   convection_perturbation = 1;
   convection_mode = 1;
-  mc_M_max = 42.0;
+  mc_M_max = 41.2;
   iter_prec = 3;
   evap_model = "Meyer";
   L_atm = 6287.5;
@@ -88,23 +88,23 @@ void cAtmosphereModel::SetDefaultConfig() {
   pr_turb = 0.9;
   abl_height = 10000.0;
   x_H2O = 0.0463;
-  x_CO2 = 0.7763;
-  x_N2 = 0.1663;
-  x_CH4 = 0.0;
-  x_NH3 = 0.0;
-  x_H2 = 0.0;
-  x_CO = 0.0;
-  x_SO2 = 0.0111;
-  ep = 0.5952;
+  x_CO2 = 0.7417;
+  x_N2 = 0.159;
+  x_CH4 = 0.0106;
+  x_NH3 = 0.0106;
+  x_H2 = 0.0106;
+  x_CO = 0.0106;
+  x_SO2 = 0.0106;
+  ep = 0.6583;
   hp = 6.1078;
-  R_Air = 274.7;
+  R_Air = 303.8;
   R_WaterVapour = 461.5;
   r_water_vapour = 0.0094;
   R_co2 = 188.9;
   lv = 2520000.0;
   ls = 2830000.0;
-  cp_l = 931.4;
-  cv_l = 725.4;
+  cp_l = 947.9;
+  cv_l = 736.2;
   lamda = 0.0262;
   r_co2 = 0.0019767;
   gam = 0.0065;
@@ -114,9 +114,9 @@ void cAtmosphereModel::SetDefaultConfig() {
   t_00 = 236.15;
   t_000 = 253.15;
   s_0 = 274515.75;
-  c_0 = 0.0207;
-  c_h2o_dry_top = 0.00452;
-  co2_0 = 0.8463;
+  c_0 = 0.0212;
+  c_h2o_dry_top = 0.000759;
+  co2_0 = 0.831;
   co2_scale = 1.0;
   c_ocean = 70;
 }

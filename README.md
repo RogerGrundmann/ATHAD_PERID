@@ -1,23 +1,34 @@
-# ATHAD_COND
+# ATHAD_PERID
 
-**The Hadean atmosphere after condensation.**
+**The atmosphere a peridotitic magma ocean left behind.**
 
-An atmospheric general-circulation model of the epoch that follows
-[ATHAD](https://github.com/RogerGrundmann/ATHAD): the magma ocean has quenched, the steam
-atmosphere has rained out into a liquid ocean, and what remains above it is a
-CO₂-dominated atmosphere of **27–100 bar over a 230–250 °C sea**. Same solver — a
-finite-difference Navier–Stokes solver on a spherical shell with RK4 time integration and
-vertical coordinate stretching — applied to the opposite thermodynamic regime.
+An atmospheric general-circulation model of the Hadean epoch that follows
+[ATHAD_COND](https://github.com/RogerGrundmann/ATHAD_COND): the magma ocean has solidified,
+the steam has long since rained out, and the volatiles a **peridotitic** (ultramafic,
+mantle-composition) melt outgassed have cooled into a **CO₂-dominated atmosphere of 5–20 bar
+over a 20–150 °C ocean**. Same solver throughout the family — finite-difference Navier–Stokes
+on a spherical shell, RK4 in time, stretched vertical coordinate.
 
-ATHAD_COND is forked from ATHAD at `29ca2f9`, **carrying its full history**, so fixes
-cherry-pick in both directions. ATHAD in turn is the atmosphere half of
-[ATOM_Precipitation](https://github.com/RogerGrundmann/ATOM_Precipitation) (forked at
-`1e3f319`).
+**"Peridotitic" names where the volatiles came from, not the present surface.** The melt is
+gone; what this model carries is its outgassed inventory, cooled. So the thermodynamic regime
+is ATHAD_COND's — subcritical water, a liquid sea, condensation live from the surface up — and
+NOT ATHAD's supercritical column. That is why the fork is cut from ATHAD_COND and keeps its
+invariants rather than inverting them.
 
-**Where it differs from ATHAD, in one sentence:** ATHAD's water is supercritical from the
-ground to ~177 km and *nothing condenses*; here water is subcritical everywhere and
-condensation is live from the sea surface up, so the code paths ATHAD spent seventeen
-defect-fixes making inert are the ones this model depends on.
+ATHAD_PERID is forked from ATHAD_COND at `3f0b05d`, **carrying its full history** — 63 commits
+reaching back to ATHAD's own fork-from-ATOM commit — so fixes cherry-pick in every direction
+(`git remote cond` and `git remote athad` point at the two sibling working copies). ATHAD_COND
+came from ATHAD @ `29ca2f9`, and ATHAD from
+[ATOM_Precipitation](https://github.com/RogerGrundmann/ATOM_Precipitation) @ `1e3f319`.
+
+**Where it differs from ATHAD_COND:** the same physics at a quarter of the pressure and 155 K
+colder, with a genuinely CO₂-dominated composition — 78 mole-% CO₂ against COND's 35 %, and
+water down from 56 mole-% to 4.6 %. The sea still sets the surface humidity, but it is a
+much drier atmosphere sitting on it.
+
+**THE SECTIONS BELOW THIS POINT ARE INHERITED FROM ATHAD_COND AND WERE MEASURED ON IT.**
+Every number in them belongs to a 60 bar / 513 K world unless it says otherwise. They are kept
+because the code is shared and the reasoning travels; they are not results of this model.
 
 ## The background opacity, split per species — a no-op that stopped being one
 
@@ -178,70 +189,64 @@ tinyxml2/     Vendored XML parser
 ## Build, run, test
 
 ```bash
-make cond                                       # -> cli/cond
+make perid                                      # -> cli/perid
 make test                                       # self-tests, run these first
-cd python && OMP_NUM_THREADS=8 ../cli/cond config_cond.xml
+cd python && OMP_NUM_THREADS=8 ../cli/perid config_perid.xml
 ```
 
-Output lands in `python/output_Hadean_condensation/`.
+Output lands in `python/output_Hadean_peridotite/`.
 
 `make` regenerates the parameter bindings from `param.py` first. The generated files are
 tracked on purpose, so a `param.py` change shows its full effect in the diff.
 
 ## Conditions
 
-The stated inputs are **T = 230–250 °C, p = 27–100 bar, H₂O 0.4–2 %, CO₂ 89–95 %,
-N₂ 5–20 % by mole**. The nominal run point is the midpoint, **60 bar / 513.15 K**.
+The stated inputs are **p = 5–20 bar, T = 20–150 °C, CO₂ 60–80 %, N₂ 10–20 %, SO₂ ~1 % by
+mole**. The nominal run point is the midpoint, **12.5 bar / 358.15 K (85 °C)** — the same
+convention ATHAD_COND used in taking 60 bar / 240 °C out of 27–100 bar / 230–250 °C.
 
-**The stated composition and the stated temperature describe different heights, and this
-is the single most important thing to understand about the configuration.** The quoted
-0.4–2 % H₂O is the *dry* atmosphere, what survives above the cold trap. Air in contact
-with a 240 °C sea holds water at its own vapour pressure: `p_sat(513.15 K) = 33.47 bar` of
-a 60 bar column, so `x_H₂O = 0.5578` at the surface — fifty-five times the dry figure. Both
-are true, at different heights, and the column runs between them.
+**`x_H₂O` is not an input.** It is set by the sea: `p_sat(358.15 K) = 0.5787 bar` of a 12.5 bar
+column, so **`x_H₂O` = 0.0463** at the surface. CO₂, N₂ and SO₂ fill the remaining 95.4 % in the
+stated dry ratio 70 : 15 : 1. Verified against the model's own `AtmMixture::resolve()`:
 
-**Since 2026-08-20 the five trace gases carry ATHAD's mole fractions** — CH₄, NH₃, H₂, CO
-and SO₂ at 0.014 each — where they used to be zero. `x_H₂O` is fixed by the sea and cannot
-give way, so they displace CO₂ and N₂ within the 44.22 % that is not water; above the cold
-trap they are **15.7 % of the dry atmosphere and CO₂ falls to 77.4 %, below the quoted
-89–95 %**. That is a deliberate departure from the stated composition. Note also that
-matching ATHAD's *fractions* does not match its *amounts*: 1.4 % of ATHAD's 250 bar is
-3.5 bar per gas, 1.4 % of this 60 bar column is 0.84 bar, so the same numbers imply four
-fifths of each trace gas left with the water.
-
-| | at the sea | above the cold trap |
+| | mole fraction | mass fraction |
 |---|---|---|
-| x = (H₂O, CO₂, N₂) | .5578 / .3459 / .0263 | .010 / .7744 / .0589 |
-| x(CH₄, NH₃, H₂, CO, SO₂) | .014 each | .0313 each |
-| M_mean [g/mol] | 27.79 | 39.90 |
-| R_mix [J/(kg·K)] | 299.2 | 208.4 |
-| cp [J/(kg·K)] | 1372.6 | 1042.5 † |
+| H₂O | 0.0463 | 0.021235 |
+| CO₂ | 0.7417 | 0.831045 |
+| background (N₂ 0.1590 + five traces at 0.0106 each) | 0.2120 | 0.147719 |
 
-† **The 1042.5 is the dry composition at the SEA-SURFACE temperature**, not at the cold
-trap. `cp_of(dry, 513.15 K)` = 1042.5; at cold-trap conditions it is **886.4** (the
-Shomate fits clamp below 298 K). This table warns two paragraphs above that the stated
-composition and the stated temperature describe different heights — and then does it
-itself, for this one entry. The 1372.6 is sound: it is `cp_of` at the sea, and it is what
-`cp_l` is set to.
+- **M_mean = 39.278 g/mol**, **R_mix = 211.68 J/(kg·K)**
+- **Background** (everything but H₂O and CO₂): M_bg = 27.369 g/mol, **R_bg = 303.79 J/(kg·K)**.
+  This is what `R_Air` means. `M_nonwater` = 40.311 g/mol is the different number that matters
+  for saturation.
+- **p_surf = 12.5 bar**, **T_surf = 358.15 K** (prescribed), **ρ_surf = 16.49 kg/m³**
+- cp = 947.9 J/(kg·K), cv = 736.2 — a third of ATHAD's and two thirds of ATHAD_COND's, because
+  the mixture is now mostly CO₂
+- **scale height 7.73 km**, dry lapse **10.35 K/km** (ATHAD_COND: 15.7 km and 7.14 K/km)
 
-| q_H₂O [kg/kg] | 0.3616 | 0.00452 |
-| ρ [kg/m³] | 39.08 | — |
-| scale height | 15.7 km | 10.9 km |
+**The surface is saturated by construction**, which is this fork's inherited defining condition:
+`q_sat` at the sea = 0.021233 against `q_H₂O` = 0.021235. Water boils at **462.96 K** at 12.5 bar,
+so the sea is **105 K below boiling** — a wider margin than ATHAD_COND's 35 K.
 
-The background is no longer N₂ alone: M_bg = 26.138 g/mol, **R_bg = 318.10 J/(kg·K)**
-(was 296.8), within 0.3 % of ATHAD's 317.26 because in both forks the traces are ~71 % of
-the background by mass. `M_nonwater` at the sea is **40.12 g/mol** (was 42.88). And the
-background's grey opacity Σf_i·κ_i goes **1e-6 → 1.944e-3 m²/kg**, so item 60's per-species
-split — an exact no-op at the old composition — now carries NH₃ (48.7 %), SO₂ (36.7 %) and
-CH₄ (13.8 %).
+**All five trace gases are present at ~1 mole-% each**, as stated, in the dry ratio
+70 : 15 : 1 : 1 : 1 : 1 : 1 (CO₂ : N₂ : SO₂ : CH₄ : NH₃ : CO : H₂), with CO₂ absorbing the
+rounding so the eight sum to 1.0000000000. They are **not** the inherited values: the fork
+initially carried ATHAD_COND's CH₄/NH₃/H₂/CO at 1.4 % each simply because they came with the
+clone, which left the mole fractions summing to 1.056 and `M_bg` 13 % adrift until the startup
+guard refused to run. By mass the background is N₂ 0.768, SO₂ 0.117, CO 0.051, NH₃ 0.031,
+CH₄ 0.029, H₂ 0.004, so **Σf_i·κ_i = 6.39e-04 — 639× the lumped `kappa_bg`**, carried mostly by
+NH₃ and SO₂. That is item 60's per-species split earning its keep on a third composition.
 
-Water boils at 548.7 K at 60 bar, so the sea is 35 K below boiling. (At the 27 bar end of
-the stated range water boils at 501.2 K, so a 503 K surface there has **no liquid ocean at
-all** — that corner is not a colder version of this one, it is a different model.)
+**The cold-trap floor is derived from this column**: `c_h2o_dry_top` = 4.06e-04, the `q_sat`
+minimum at level 24 (14.59 km, 254.0 K, 1.233 bar) where the profile goes isothermal. The
+inherited ATHAD_COND value was 0.00452 — **11.1× wetter than this column can hold**, which is
+that fork's own "cold trap is eight times too wet" defect arriving here by inheritance.
 
-`test/cond_column_selftest.cpp` asserts every number in that table, plus the arithmetic
-connecting the config to it. The config's `x_*` and `r_air` are derived quantities; change
-one without the other and the test fails, which is the point.
+**`albedo_surface` = 0.06** is a water value and correct for an ocean surface — but do not carry
+over ATHAD_COND's finding that it is not a lever. There a 25 % change in it was invisible because
+the cloud deck saturated the compositing `refl = tau/(tau+2)` at 0.9999909 in every column. **This
+atmosphere holds 17× less water** (q_H₂O 0.0212 against 0.3616), so the deck may not be total and
+the clear-sky value may show through. Measure it here before assuming either way.
 
 ## Four invariants — do not silently break these
 
