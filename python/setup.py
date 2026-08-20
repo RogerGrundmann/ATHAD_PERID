@@ -2,8 +2,8 @@ from setuptools import Extension, setup
 from Cython.Build import cythonize
 
 extensions = [
-    Extension ( "pycond",
-              ['pycond.pyx', 'PythonStream.cpp'],
+    Extension ( "pyperid",
+              ['pyperid.pyx', 'PythonStream.cpp'],
               language = 'c++',
               extra_compile_args=["-std=c++17"],
               libraries = ['cond'],
@@ -13,6 +13,6 @@ extensions = [
               )]
 
 setup(
-    name = 'pycond',
+    name = 'pyperid',
     ext_modules = cythonize(extensions, language_level = "2"),
     )

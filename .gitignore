@@ -14,11 +14,11 @@ dist/
 python/build/
 
 # Cython generated C++
-python/pycond.cpp
-python/pycond.h
+python/pyperid.cpp
+python/pyperid.h
 
 # NOTE: the param.py-generated bindings (atmosphere/*.inc, python/atmosphere_pxd.pxi,
-# python/pycond.pyx, cli+python/config_cond.xml) are deliberately TRACKED, as in the
+# python/pyperid.pyx, cli+python/config_perid.xml) are deliberately TRACKED, as in the
 # parent repo — a param.py change then shows its full effect in the diff.
 
 # Simulation output data. The pattern is output_*/ rather than output_Hadean*/
@@ -38,11 +38,11 @@ atom_log.txt
 run_*.log
 
 # One-off configs for a particular run length or experiment. The generated
-# config_cond.xml in cli/ and python/ stays tracked; these variants do not.
-config_cond_*.xml
+# config_perid.xml in cli/ and python/ stays tracked; these variants do not.
+config_perid_*.xml
 
 # Executables
-cli/cond
+cli/perid
 test/rad_selftest
 
 # Reference papers (copyright)

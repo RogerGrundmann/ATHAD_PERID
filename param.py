@@ -84,7 +84,7 @@ def main():
             # must be consistent with this value. (The old comment here said R_Air, the
             # background gas constant; the code has used the full-mixture R_mix since ATHAD's
             # thermodynamics went in. Corrected rather than carried.)
-            ('p_0', 'pressure at sea level in hPa', 'double', 60000.0),
+            ('p_0', 'pressure at sea level in hPa', 'double', 12500.0),
             ('t_0', 'temperature in K compare to 0°C', 'double', 273.15),
 
             # ATHAD_COND: the sea-surface temperature is PRESCRIBED, as in ATHAD — no
@@ -93,13 +93,13 @@ def main():
             # ATHAD's 50 K because a liquid ocean is a far better heat reservoir than a magma
             # one, but it is an assumption, not a result.
             #
-            # HARD CONSTRAINT, checked in test/cond_column_selftest.cpp: the surface must stay
+            # HARD CONSTRAINT, checked in test/perid_column_selftest.cpp: the surface must stay
             # below the boiling point at p_0 (548.7 K at 60 bar) or there is no liquid sea to
             # hold the surface layer at saturation, and the whole Phase 3 boundary condition
             # is void. At the 27 bar end of the input range water boils at 501.2 K, so a
             # 503 K surface there has no ocean at all.
-            ('t_surf_equator', 'ATHAD_COND: prescribed sea-surface temperature at the equator in K', 'double', 513.15),
-            ('t_surf_pole', 'ATHAD_COND: prescribed sea-surface temperature at the poles in K', 'double', 503.15),
+            ('t_surf_equator', 'ATHAD_COND: prescribed sea-surface temperature at the equator in K', 'double', 358.15),
+            ('t_surf_pole', 'ATHAD_COND: prescribed sea-surface temperature at the poles in K', 'double', 348.15),
 
             # ATHAD: the COSMO barometric profile T(h) = T0*sqrt(1 - 2*beta*g*h/(R*T0^2)) has a
             # near-surface lapse rate beta*g/(R*T0), so beta is derived rather than fixed:
@@ -169,7 +169,7 @@ def main():
             # ATHAD: 42.97). Almost exactly ATHAD's, at a quarter of the pressure — the gas
             # is twice as heavy and three times as cold, and the two nearly cancel.
             # This is what sets the surface pressure, via p = 1e-2*(r_air*R_mix*T).
-            ('r_air', 'ATHAD_COND: reference density of the atmospheric mixture at the sea surface in kg/m³', 'double', 39.08),
+            ('r_air', 'ATHAD_COND: reference density of the atmospheric mixture at the sea surface in kg/m³', 'double', 16.95),
             ('r_0_water', 'reference density of fresh water in kg/m3', 'double', 997.0),
             ('t_equat_modern', 'mean temperature of the modern earth in °C', 'double', 15.4),
 
@@ -386,7 +386,7 @@ def main():
             # 100.0 is between them: 33x Earth's, the density ratio, with 7.3x headroom over
             # the model's own uncapped peak. That restores the cap to what it is for — a
             # NaN/runaway backstop — rather than a limiter that sets the answer.
-            ('mc_M_max', 'ATHAD_COND: ceiling on convective mass flux |M_u|,|M_d| in kg/(m2 s)', 'double', 100.0),
+            ('mc_M_max', 'ATHAD_COND: ceiling on convective mass flux |M_u|,|M_d| in kg/(m2 s)', 'double', 42.0),
 
 #            ('iter_prec', 'precipitation sub-iteration count: min 3 for evaporation (e_d, e_p) to act on non-zero P_conv; check convergence at 4-5', 'int', 4),
             ('iter_prec', 'precipitation sub-iteration count: min 3 for evaporation (e_d, e_p) to act on non-zero P_conv; check convergence at 4-5', 'int', 3),
@@ -554,7 +554,7 @@ def main():
             # dry figure, and CO2 and N2 are diluted in their dry ratio to fit.
             #
             # The two are consistent once separated by height, and the column runs between
-            # them; test/cond_column_selftest.cpp asserts both mixtures and the arithmetic
+            # them; test/perid_column_selftest.cpp asserts both mixtures and the arithmetic
             # that connects them. Change these and that test fails, which is the point.
             #
             # THE FIVE TRACE GASES ARE PRESENT, AT ATHAD'S MOLE FRACTIONS (2026-08-20).
@@ -583,14 +583,53 @@ def main():
             #      fraction, these become ~5.8 mole-% each (29 % of the column) and the
             #      composition is a different atmosphere again.
             # ==================================================================
-            ('x_H2O', 'ATHAD_COND: mole fraction of H2O at the sea surface (saturated: p_sat(T_surf)/p_0)', 'double', 0.5578),
-            ('x_CO2', 'ATHAD_COND: mole fraction of CO2 at the sea surface (dry ratio, after the traces take 7 %)', 'double', 0.3459),
-            ('x_N2',  'ATHAD_COND: mole fraction of N2 at the sea surface (dry ratio, after the traces take 7 %)',  'double', 0.0263),
-            ('x_CH4', 'ATHAD_COND: mole fraction of CH4', 'double', 0.014),
-            ('x_NH3', 'ATHAD_COND: mole fraction of NH3', 'double', 0.014),
-            ('x_H2',  'ATHAD_COND: mole fraction of H2',  'double', 0.014),
-            ('x_CO',  'ATHAD_COND: mole fraction of CO',  'double', 0.014),
-            ('x_SO2', 'ATHAD_COND: mole fraction of SO2', 'double', 0.014),
+            # ==================================================================
+            # ATHAD_PERID — THE ATMOSPHERE A PERIDOTITIC MAGMA OCEAN LEFT BEHIND.
+            #
+            # "Peridotitic" names where the volatiles came from, not the present surface: the
+            # magma ocean has solidified and its outgassed inventory has cooled to a 5-20 bar,
+            # 20-150 C world with a liquid sea. The regime is therefore ATHAD_COND's --
+            # subcritical water, condensation live from the sea up -- and NOT ATHAD's
+            # supercritical column. That is why this fork is cut from ATHAD_COND and keeps its
+            # invariants rather than inverting them.
+            #
+            # RUN POINT = THE MIDPOINT OF THE STATED RANGES, as ATHAD_COND took 60 bar / 240 C
+            # out of 27-100 bar / 230-250 C: 12.5 bar and 85 C (358.15 K). Stated inputs are
+            # p = 5-20 bar, T = 20-150 C, CO2 60-80 %, N2 10-20 %, SO2 ~1 % by mole.
+            #
+            # x_H2O IS NOT FREE: it is p_sat(T_surf)/p_0 = 0.5787/12.5 = 0.0463, set by the sea,
+            # exactly as in ATHAD_COND. CO2, N2 and SO2 fill the remaining 95.4 % in the stated
+            # dry ratio 70:15:1. Checked with the model's own resolve(): q_sat at the sea =
+            # 0.020660 against q_H2O = 0.020660, so the surface is saturated by construction,
+            # and water boils at 462.96 K, so the sea is 105 K below boiling.
+            #
+            # DERIVED WITH THEM, all recomputed rather than scaled:
+            #   M_mean 40.368 g/mol   R_mix 205.966   M_bg 30.267   R_bg 274.702   ep 0.5952
+            #   q_H2O 0.020660   q_CO2 0.846304   q_bg 0.133036
+            #   cp 931.37   cv 725.41   r_air 16.945 kg/m3   M_nonwater 41.453   H = 7.52 km
+            #   f_bg: N2 0.8677, SO2 0.1323 (the only two non-zero), so sum(f_i*kappa_i) =
+            #   2.65e-04 -- 265x the lumped kappa_bg, carried entirely by SO2.
+            #   mc_M_max = 2.5 m/s * r_air = 42 kg/(m2 s), the siblings' density argument.
+            #
+            # THE FOUR REDUCING TRACES ARE ZERO HERE. ATHAD_COND carries CH4/NH3/H2/CO at
+            # 0.014 each and they came across with the fork, which left the mole fractions
+            # summing to 1.056 and M_bg 13 % adrift -- caught by the startup print disagreeing
+            # with an offline resolve(). An outgassed peridotitic inventory that is CO2-dominated
+            # with SO2 is oxidised; NH3 and CH4 at 1.4 % each do not belong in it. SO2 is the
+            # only trace, at the stated ~1 %.
+            #
+            # STILL INHERITED AND NOT RE-DERIVED: c_h2o_dry_top (water above the cold trap) is
+            # ATHAD_COND's 0.00452 and belongs to a 60 bar column. Redo it before quoting any
+            # cold-trap or humidity number.
+            # ==================================================================
+            ('x_H2O', 'ATHAD_COND: mole fraction of H2O at the sea surface (saturated: p_sat(T_surf)/p_0)', 'double', 0.0463),
+            ('x_CO2', 'ATHAD_COND: mole fraction of CO2 at the sea surface (dry ratio, after the traces take 7 %)', 'double', 0.7763),
+            ('x_N2',  'ATHAD_COND: mole fraction of N2 at the sea surface (dry ratio, after the traces take 7 %)',  'double', 0.1663),
+            ('x_CH4', 'ATHAD_COND: mole fraction of CH4', 'double', 0.0),
+            ('x_NH3', 'ATHAD_COND: mole fraction of NH3', 'double', 0.0),
+            ('x_H2',  'ATHAD_COND: mole fraction of H2',  'double', 0.0),
+            ('x_CO',  'ATHAD_COND: mole fraction of CO',  'double', 0.0),
+            ('x_SO2', 'ATHAD_COND: mole fraction of SO2', 'double', 0.0111),
 
             # ep = R_background / R_H2O = 296.8/461.5. NOTE: the dilute approximation this
             # constant serves, q_sat = ep*E/(p-(1-ep)*E), is INVALID here for the same reason
@@ -600,7 +639,7 @@ def main():
             # than one that is valid over none, because it looks right in the printouts.
             # The exact mass-fraction form is used everywhere; ep remains only where a
             # genuine gas-constant ratio is wanted.
-            ('ep', 'ATHAD_COND: ratio of the background-mixture to water-vapour gas constants', 'double', 0.6893),
+            ('ep', 'ATHAD_COND: ratio of the background-mixture to water-vapour gas constants', 'double', 0.5952),
             ('hp', 'water vapour pressure at T = 0°C: E = 6.1 hPa', 'double', 6.1078),
 
             # ATHAD_COND: "Air" means the NON-CONDENSABLE BACKGROUND (everything but H2O and
@@ -611,7 +650,7 @@ def main():
             # alone. It is not air. The quantity that matters for saturation is M_nonwater
             # (CO2 + background, 40.12 g/mol here, was 42.88), a different number and a
             # different function.
-            ('R_Air', 'ATHAD_COND: specific gas constant of the non-condensable background in J/(kg*K)', 'double', 318.1),
+            ('R_Air', 'ATHAD_COND: specific gas constant of the non-condensable background in J/(kg*K)', 'double', 274.7),
             ('R_WaterVapour', 'specific gas constant of water vapour in J/(kg*K)', 'double', 461.5),
             ('r_water_vapour', 'density of saturated water vapour in kg/m³ at 10°C', 'double', 0.0094),
             ('R_co2', 'specific gas constant of CO2 in J/(kg*K)', 'double', 188.9),
@@ -625,8 +664,8 @@ def main():
             # in the dry CO2 air aloft (both at 513 K, so that ratio is composition and not
             # temperature), so this constant is only the fallback; cp_of() gives the local
             # value. cv_l = cp_l - R_mix = 1372.6 - 299.2.
-            ('cp_l', 'ATHAD_COND: specific heat capacity of the mixture at constant pressure in J/(kg K)', 'double', 1372.6),
-            ('cv_l', 'ATHAD_COND: specific heat capacity of the mixture at constant volume in J/(kg K)', 'double', 1073.4),
+            ('cp_l', 'ATHAD_COND: specific heat capacity of the mixture at constant pressure in J/(kg K)', 'double', 931.4),
+            ('cv_l', 'ATHAD_COND: specific heat capacity of the mixture at constant volume in J/(kg K)', 'double', 725.4),
             ('lamda', 'heat transfer coefficient of air in W/(m K)', 'double', 0.0262),
             ('r_co2', 'density of CO2 in kg/m³ at 25°C', 'double', 0.0019767),
             ('gam', 'constant slope of temperature    gam = 6.5 K/1000 m', 'double', 0.0065),
@@ -665,7 +704,7 @@ def main():
             # (RHS_Atm_Turb.cpp: coeff_energy, coeff_MC_q, coeff_L) and, unlike in ATHAD, it
             # is NOT the value the field is initialised to: the water field is a profile
             # here, running from c_0 at the sea to c_h2o_dry_top above the cold trap.
-            ('c_0', 'ATHAD_COND: reference water vapour mass fraction at the sea surface in kg/kg', 'double', 0.3616),
+            ('c_0', 'ATHAD_COND: reference water vapour mass fraction at the sea surface in kg/kg', 'double', 0.0207),
 
             # ATHAD_COND: the water that survives above the cold trap, as a MASS fraction.
             # This is the model's link to the quoted composition: the literature's "H2O
@@ -683,7 +722,7 @@ def main():
             # mixed and conserved, and that is an ASSUMPTION this model makes rather than a
             # result it derives. q_CO2 = 0.3459*44.010/27.789 = 0.5478 at the surface (0.6233
             # before the trace gases took 7 mole-% out of the CO2/N2 share).
-            ('co2_0', 'ATHAD_COND: reference CO2 mass fraction at the sea surface in kg/kg', 'double', 0.5478),
+            ('co2_0', 'ATHAD_COND: reference CO2 mass fraction at the sea surface in kg/kg', 'double', 0.8463),
             ('co2_scale', 'multiplier applied to the whole CO2 field for sensitivity experiments (1.0 = field as built; 2.0 = doubled CO2)', 'double', 1.0),
 
             # ATHAD: no land, so no land/ocean humidity split — a single surface relative
@@ -893,7 +932,7 @@ cdef extern from "c%sModel.h":
         write_cpp_headers(filename, sections)
 
 
-    write_pxi('python/pycond.pyx.template', 'python/pycond.pyx', [
+    write_pxi('python/pyperid.pyx.template', 'python/pyperid.pyx', [
         ('atmosphere_params', 'Atmosphere', atmosphere_sections)])
 
 
@@ -904,13 +943,13 @@ cdef extern from "c%sModel.h":
 
 
     for  filename, sections in [
-        ('python/config_cond.xml', atmosphere_sections)
+        ('python/config_perid.xml', atmosphere_sections)
     ]:
         write_config_xml(filename, sections)
 
 
     for  filename, sections in [
-        ('cli/config_cond.xml', atmosphere_sections)
+        ('cli/config_perid.xml', atmosphere_sections)
     ]:
         write_config_xml(filename, sections)
 

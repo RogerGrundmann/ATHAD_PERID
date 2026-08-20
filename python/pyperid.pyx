@@ -4,7 +4,7 @@
 
 import sys
 
-from cond cimport cAtmosphereModel
+from perid cimport cAtmosphereModel
 
 from libcpp cimport bool
 from libcpp.string cimport string
