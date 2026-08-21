@@ -21,7 +21,7 @@ void cAtmosphereModel::SetDefaultConfig() {
   use_earthbyte_reconstruction = false;
   use_NASA_velocity = false;
   use_NASA_temperature = true;
-  CategoryIceScheme = 2;
+  CategoryIceScheme = 3;
   p_0 = 12500.0;
   t_0 = 273.15;
   t_surf_equator = 358.15;
