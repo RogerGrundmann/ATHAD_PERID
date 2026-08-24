@@ -583,6 +583,97 @@ over the 1 bar reference". Both describe ATHAD; here it is 60 bar. The code is r
 
 ## Remaining work
 
+- **THE VERTICAL GRID CAN BE PLACED BY MASS INSTEAD OF BY METRES (`ATM_GRID_PRESSURE=1`,
+  default off), AND IT IS NOT THE Psi REPAIR** (2026-08-24). Written for this fork because the
+  mismatch is worst here; the off-branch is bit-identical and the measurement is below.
+
+  **THE PREMISE.** The shell is `(exp(zeta)-1)*L_atm`, a LENGTH, and `L_atm` has come down the
+  family from ATOM unchanged in kind. This tree's `param.py` entry still carried the label
+  `ATHAD_COND:` and the value 6287.5 m, never re-derived at the fork. A length is the wrong
+  invariant to carry between planets, because an atmosphere is organised by MASS and mass is
+  exponential in height with e-folding `H = R*T/g`:
+
+  | tree | H_surf | shell | **shell/H** | dz_0 | dz_top |
+  |---|---|---|---|---|---|
+  | ATOM (Earth) | 8.43 km | 16 km | **1.90** | 65 m | 1.22 km |
+  | ATHAD | 59.31 km | 300 km | **5.06** | 1224 m | 22.8 km |
+  | ATHAD_COND | 15.50 km | 120 km | **7.74** | 322 m | 6.16 km |
+  | **ATHAD_PERID** | **7.72 km** | 120 km | **15.54** | 322 m | 6.16 km |
+
+  ATHAD_COND and this fork run the SAME grid — identical `L_atm`, `zeta`, `im`, hence identical
+  322 m and 6.16 km layers — at 7.7 and 15.5 scale heights. The lid moved by **8x** across the
+  family, just not in the units the grid is written in.
+
+  **WHAT THE BRANCH DOES.** Integrate a reference hydrostatic column with the model's own
+  adiabat (`dT/dz = -g/cp(T)`, local cp, clamped at `t_skin`) and `d(ln p)/dz = -g/(R*T)`, then
+  place level `i` at `ln(p_0/p_i) = x_i * Lambda`, `Lambda = ln(p_0/p_top)`, with
+  `x_i = (exp(beta*i/(im-1)) - 1)/(exp(beta) - 1)`. **The ladder is the SAME exponential stretch
+  the legacy grid uses — only the coordinate it stretches changed, from metres to e-foldings of
+  pressure** — which is why `beta` defaults to `zeta`: the shape is preserved and only the
+  placement moves onto the mass column. Two dimensionless knobs that transfer across forks:
+  `ATM_GRID_PTOP` (default 1e-6) and `ATM_GRID_BETA` (default `zeta`).
+
+  **THE LAW MATTERS AND THE FIRST ONE WAS WRONG.** A power law `x_i = (i/(im-1))^alpha` sets the
+  bottom layer to `(1/(im-1))^alpha` and is brutally sensitive to `alpha` (im = 61,
+  p_top/p_0 = 1e-6, H ~ 7.72 km):
+
+      legacy exponential-in-height ....  322 m     <- what the model runs today
+      power law, alpha = 1.0 .......... 1778 m     equal mass per layer: far too coarse
+      power law, alpha = 2.0 ..........   30 m     10x FINER: stiff and slow
+      ln-p ladder, beta = zeta = 3 ....  286 m     <- matches, so this is the law used
+
+  Not hypothetical: the 50 km-shell arm ran 2.4x finer at the bottom than its sibling and took
+  **~7x the wall clock** for the same iterations. Built, the grid gives a **282 m** bottom layer
+  against the predicted 286, a lid at **79.6 km** instead of 120, and the tropopause at level 33.
+
+  **MEASURED, 40 iterations, 24 threads, im = 61, one binary:**
+
+  | | legacy grid (120 km) | **pressure grid (79.6 km)** |
+  |---|---|---|
+  | OLR | 136.28 W/m2 | 136.41 (**+0.10 %**) |
+  | photosphere | 18.1 km | 18.3 km |
+  | `tau` at the lid | 0.000000 | 0.000000 |
+  | max cloud water | 3.787 g/kg | 3.676 |
+  | **`div(rho u)/rho` rms** | 4.935e-02 | **3.456e-02 (-30 %)** |
+  | RMS `Psi(i=0)` | 1.201e12 | 1.131e12 (-6 %) |
+  | **closure ratio** | **2.404** | **2.429** |
+  | mass above the v reversal | 8.90 % | 9.67 % |
+  | wall clock | ~7.0 min | 7.5 min |
+
+  **IT DOES NOT FIX Psi, AND THAT IS THE RESULT.** The closure ratio is unchanged (2.404 ->
+  2.429) and the mass above the reversal barely moves (8.90 -> 9.67 %), because `Psi(ground)` is
+  governed by the VELOCITY PROFILE, not by where the levels sit: `VelocityInitializer::init_v_or_w`
+  is still linear in GEOMETRIC HEIGHT between `v_surf` and `v_trop`, so the reversal stays at
+  ~12 km whatever the grid does. **The grid and the profile are two separate defects and this
+  measurement separates them.** The remaining Psi repair is to express the CELL PROFILE in a
+  mass coordinate, in `VelocityInitializer`, and it is not done.
+
+  **What it does buy**, and why it is kept: the divergence residual falls **30 %** — which bears
+  on ATHAD item 72's "structural and unattributed" residual, though part of it is instrument
+  rather than physics, since `div(rho u)/rho` divides by a `rho` that approaches vacuum at
+  120 km and those cells are simply gone now; 40 km of shell holding 6 parts per million of the
+  mass is freed; the radiation is untouched (OLR +0.10 %, inside the 0.5 % thread envelope of
+  ATHAD item 61, photosphere +0.2 km, lid still transparent); and the grid is specified by two
+  dimensionless numbers that mean the same thing in every fork instead of a length that does not.
+
+  **THREE SUPPORTING CHANGES, and two of them are not pressure-grid-specific:**
+
+  - `metricExpRm`/`metricCurv` take a **numerical** Jacobian from a per-level table (`m_layer_J`),
+    since a pressure-placed grid has no closed form. This generalises ATHAD item 80's
+    `metricExpRm`, which is hard-wired to the exponential law in ATHAD and ATHAD_COND too. The
+    legacy analytic path is untouched.
+  - `height_to_level`/`level_to_height` search the table when the pressure grid is on.
+  - **The `init_layer_heights` / `init_tropopause_layers` OMP RACE IS GONE.** They ran as
+    concurrent `omp sections`, which is *why* `init_tropopause_layers` inverted the grid
+    analytically instead of reading `m_layer_heights` — its own comment says so. That coupling
+    is what produced the `round(h / L_atm)` defect. A tabulated grid has no analytic inverse, so
+    they are serialised now; the parallelism spanned two O(im)/O(jm) loops and bought nothing.
+    **This race is live in ATHAD, ATHAD_COND and upstream in ATOM_Precipitation.**
+
+  **The off-branch null is exact**: with `ATM_GRID_PRESSURE` unset, all eleven printed
+  `residuum_atm` values match the pre-change binary to nine digits, with OLR, `div(rho u)/rho`
+  and the tropopause index identical.
+
 - **WHY Psi DOES NOT CLOSE AT THE GROUND, AND THE TROPOPAUSE CONSTANTS THAT CAUSE IT**
   (2026-08-24). `Psi(i=0)` must be zero: `u` at the surface is 0 and `Psi` at the lid is 0, so
   the column-integrated meridional MASS flux is forced to vanish. It does not, and the reason
