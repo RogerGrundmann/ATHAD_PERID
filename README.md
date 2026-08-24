@@ -583,6 +583,63 @@ over the 1 bar reference". Both describe ATHAD; here it is 60 bar. The code is r
 
 ## Remaining work
 
+- **WHY Psi DOES NOT CLOSE AT THE GROUND, AND THE TROPOPAUSE CONSTANTS THAT CAUSE IT**
+  (2026-08-24). `Psi(i=0)` must be zero: `u` at the surface is 0 and `Psi` at the lid is 0, so
+  the column-integrated meridional MASS flux is forced to vanish. It does not, and the reason
+  is not the solver, not the diagnostic, and not the projection.
+
+  **Psi(ground) can only vanish if the two branches of the cell carry equal and opposite
+  MASS.** Compared at the same latitude (+2 deg):
+
+  | | v reverses at | **mass above the reversal** | \|net\|/gross |
+  |---|---|---|---|
+  | ATHAD | 49.6 km | **54.9 %** | **0.097** |
+  | ATHAD_COND (was) | 59.6 km | 0.04 % | 0.9992 |
+  | this fork (was) | 59.6 km | **0.00 %** | **1.0000** |
+
+  This fork was the extreme case: the return branch existed in VELOCITY and carried **no mass at
+  all**, so `Psi(ground)` was the entire circulation, with a closure ratio of **17.2**. In scale
+  heights the reversal sat at **0.84 H in ATHAD and 7.7 H here** (H = 7.7 km).
+
+  **THE CAUSE: `tropopause_equator/pole` were ATHAD's 207/195 km, ABOVE THIS MODEL'S 120 km
+  LID** -- inherited through ATHAD_COND on the fork commit and never re-sized.
+  `height_to_level(207000)` returns 70.5 and clamps to `im-1 = 60`, which the startup line has
+  been printing all along:
+
+      tropopause_pole=195000  pole_index=60.000000  (height 120000.3 m of 120000.3 m)   <- here
+      tropopause_pole=195000  pole_index=35.000000  (height 201275.1 m of 300005.6 m)   <- ATHAD
+
+  Two consequences: the initial wind ramp was stretched over the whole shell, and
+  `VelocityInitializer::init_v_or_w_above_tropopause` opens with `if (tl >= m.im - 1) return;`
+  so **the taper above the tropopause never executed.** Same defect class as
+  `init_tropopause_layers`'s `round(h / L_atm)`: a height constant that is right in the parent
+  and becomes a wrong level index in a fork with a different shell.
+
+  **MEASURED, 40 iterations, 24 threads, config-only arms:**
+
+  | tropopause | tl | v reverses | mass above | RMS Psi(0) | interior Psi | ratio | div rms |
+  |---|---|---|---|---|---|---|---|
+  | 195/207 km (ATHAD) | **60 = lid** | 59.6 km | 0.00 % | 2.32e12 | 1.35e11 | **17.193** | 1.168e-01 |
+  | **18/19.1 km** | **27** | **12.6 km** | **8.90 %** | **1.20e12** | 5.00e11 | **2.404** | **4.935e-02** |
+
+  `Psi(ground)` RMS **-48 %**, the closure ratio **-86 %**, `div(rho u)/rho` **-58 %**, and the
+  OLR unmoved at 136.28 -- the family's circulation-does-not-reach-the-OLR null again. A second
+  reversal appears at 97.1 km, which is the taper running for the first time.
+
+  **18.0/19.1 km IS THE DEFAULT SINCE 2026-08-24**; `tropopause_pole=195000
+  tropopause_equator=207000` restore the old branch exactly. **18 km is this model's OWN
+  tropopause** -- its profile goes isothermal at 221.1 K from level 27 (17.97 km) -- and unlike
+  ATHAD_COND, here the thermal tropopause is also very nearly a MASS one (2.3 scale heights), so
+  one value serves both meanings and no compromise is needed. ATHAD_COND had to be set at 22 km
+  against a 70 km thermal tropopause, and carries that caveat in its own README.
+
+  **THIS IS AN IMPROVEMENT AND NOT A CURE.** The global maximum of `Psi` is still at z = 0 m
+  here, where in ATHAD_COND the mass-placed value moved it off the ground. 8.90 % of the mass
+  above the reversal is not the ~50 % that would make the branches cancel. The underlying
+  problem is that `init_v_or_w` is linear in GEOMETRIC HEIGHT while the mass is distributed
+  exponentially; **the real repair is to express the cell profile in a mass coordinate**, and
+  it is not done.
+
 - **THE ATHAD PORT OF 2026-08-24 (its README items 68-80): four defaults changed, seven knobs
   added, and the measurement is OPEN.** The two trees' physics files are kept name-identical so
   fixes cherry-pick in both directions; this is the second batch to travel (the first was item

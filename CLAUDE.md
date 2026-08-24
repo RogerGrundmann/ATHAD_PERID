@@ -206,8 +206,10 @@ well-mixed background entering `R_mix`, `cp_mix` and the opacity.
 > is now measured rather than warned about**: one of the four turned out to be inert here and
 > another turned out to be capped. Restore the old branch with
 > `ATM_PROJ_SWEEPS=1 ATM_RAD_DIRECT=0 ATM_SAT_SUPERHEAT=0 ATM_PRECIP_BANDS=0`.
-> **WHICH of the four moves the OLR is NOT attributed** -- no one-knob arm has been run, and
-> item 75 is excluded only because it is inert.
+> **The one-knob decomposition was run in ATHAD_COND (2026-08-24)**: the OLR there is
+> `ATM_PRECIP_BANDS` (+14.4 %), `ATM_RAD_DIRECT` +1.6 %, `ATM_PROJ_SWEEPS` and
+> `ATM_SAT_SUPERHEAT` 0.00, and the divergence rise is entirely `ATM_PROJ_SWEEPS`.
+> **It has NOT been repeated in this tree**, whose all-knob OLR moved only -0.5 %.
 >
 > **Default-off knobs ported with it, off-branch bit-identical:** `ATM_CELL_ALTERNATE` (item 69 --
 > four of five prescribed cells turn the same way, and `edgeRadialCoeff` already assumes the

@@ -489,8 +489,28 @@ def main():
             # not prescribed.
             # ATHAD: the convective column now ends where the adiabat meets the skin
             # temperature, ~207 km. Above that the atmosphere is isothermal and radiative.
-            ('tropopause_pole', 'ATHAD: top of the convective column at the poles in m', 'double', 195000.0),
-            ('tropopause_equator', 'ATHAD: top of the convective column at the equator in m', 'double', 207000.0),
+            # ATHAD_PERID: 18.0/19.1 km SINCE 2026-08-24, MEASURED. These were ATHAD's
+            # 195/207 km -- inherited through ATHAD_COND, and ABOVE THIS MODEL'S 120 km LID.
+            # height_to_level(207000) returns 70.5 and clamps to im-1 = 60, so the initial
+            # wind ramp was stretched over the whole shell and
+            # VelocityInitializer::init_v_or_w_above_tropopause, which opens with
+            # "if (tl >= m.im - 1) return;", never ran at all.
+            #
+            # 18 km is this model's OWN tropopause: its profile goes isothermal at 221.1 K
+            # from level 27 (17.97 km). Unlike ATHAD_COND, here the thermal tropopause is
+            # also very nearly a mass one -- 18 km is 2.3 scale heights -- so one value
+            # serves both meanings and no compromise is needed. Measured at 40 iterations,
+            # 24 threads:
+            #
+            #   tropopause      tl    v reverses   mass above    Psi(0)/Psi(interior)   div rms
+            #   195/207 (ATHAD) 60=lid  59.6 km       0.00 %         17.193            1.168e-01
+            #    18/19          27      12.6 km       8.90 %          2.404            4.935e-02
+            #
+            # Psi(ground) RMS -48 %, the closure ratio -86 %, div(rho u)/rho -58 %, and the
+            # OLR unmoved at 136.28. The Psi maximum is still on the ground here, so this is
+            # an improvement and not a cure. ATHAD's 195000/207000 restore the old branch.
+            ('tropopause_pole', 'ATHAD_PERID: top of the convective column at the poles in m; 18.0 km set 2026-08-24 from this model own isothermal onset, was 195 km (ATHAD value, clamped to the lid here)', 'double', 18000.0),
+            ('tropopause_equator', 'ATHAD_PERID: top of the convective column at the equator in m; 19.1 km set 2026-08-24, was 207 km which is above this shell', 'double', 19100.0),
 
 
             # ATHAD_PERID circulation-cell layout. Ported from ATHAD_COND with the MECHANISM
