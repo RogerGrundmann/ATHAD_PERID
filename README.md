@@ -660,10 +660,67 @@ over the 1 bar reference". Both describe ATHAD; here it is 60 bar. The code is r
   `ATM_PROGNOSTIC_T` knob; this tree has neither — invariant 4 here is a MOIST, state-dependent
   adiabat. `moist_phys_start_iter = 0` (item 74) has been this tree's default since the fork.
 
-  **Verification done: both trees build clean and `make test` passes with 0 failures.**
-  **Verification NOT done: no A/B has been run in either tree.** The four defaults above are
-  argued, not measured, here. Do not quote an OLR, a `Psi`, a photosphere or a condensate figure
-  from this tree against a pre-port number until the pair has been run.
+  **Both trees build clean and `make test` passes with 0 failures.**
+
+  ### THE MEASUREMENT, RUN 2026-08-24 — 40 iterations, 24 threads, one binary, env-only arms
+
+  | | old branch | new defaults | |
+  |---|---|---|---|
+  | OLR | 136.98 W/m2 | 136.28 | **-0.5 %** |
+  | imbalance (in - out) | +133.93 | +134.63 | |
+  | photosphere | 18.3 km / 221.09 K | 18.1 km / 221.08 K | unmoved |
+  | `t_skin` | 262.91 K | 262.91 K | unmoved |
+  | mean albedo | 0.4994 | 0.4994 | saturated on presence |
+  | max cloud water | 2.566 g/kg | 3.787 | **+48 %** |
+  | max cloud ice | 0.0281 g/kg | 0.0603 | **+114 %** |
+  | `P_snow` mean | **0.000e+00 mm/a** | **9.461e+04** | the band repair |
+  | total precip mean | 9.461e+04 mm/a | 2.749e+05 | x2.91 |
+  | `Psi_max` | 9 401 (1e9 kg/s) | 6 826 | **-27 %, and still AT z = 0 m** |
+  | `div(rho u)/rho` rms | 7.068e-02 | **1.168e-01** | **+62 %, from the first diagnostic on** |
+  | `residuum_atm` | 0.089 | 0.048 | -46 % |
+
+  **FOUR RESULTS, AND THIS FORK IS THE CONTROL FOR TWO OF THEM.**
+
+  **(1) `ATM_SAT_SUPERHEAT` IS INERT HERE TOO — measured, not assumed.** 10 iterations with
+  `ATM_ICE_CENSUS=1`: the guard is REACHED 637 887 times in the first call and 1.67 million by
+  the third, and REJECTS **zero** every time; `condensate where canCondense is false` is
+  **0 cells at all four stages**. ATHAD's largest recorded effect (OLR -49.4 %) is a no-op in
+  both subcritical forks, for the same reason `alpha_entry` is: the state it guards against is
+  a supercritical or superheated cell, and this column has none. **So none of the change above
+  is item 75's.** It ships ON to keep the trees identical, and costs one
+  `saturationMassFraction` call per Newton pass.
+
+  **(2) THE PRECIPITATION FLUX IS THE CAP, BY FIVE ORDERS OF MAGNITUDE.** The item-77 probe,
+  every call:
+
+      CAP PROBE: P_rain cells at the cap 1 293 469,
+                 largest value the recurrence wanted 4.669e+02 kg/(m2 s)   (cap 3.000e-03)
+
+  **A factor of 1.6e5**, in 1.29 million cells. `P_rain` and `P_snow` both sit at
+  9.461e+04 mm/a, mean equal to max — a uniform field pinned on Earth's `P_max_flux` =
+  3.0e-3 kg/(m2 s) ~ 260 mm/d. The x2.91 in total precipitation is therefore **not** the size
+  of the band repair; the repair unlocked a second category and both are on the ceiling.
+  **No precipitation number from this tree means anything until `P_max_flux` is sized for this
+  atmosphere.** `ATM_PRECIP_CAP` scales it. Note the ratio against ATHAD_COND — 1.6e5 here
+  against 9.3e6 there — so the overshoot scales with the water inventory, as expected, and this
+  fork is the milder of the two.
+
+  **(3) THIS FORK IS THE CLEAN CONTROL ON THE OLR, AND IT SAYS THE RADIATIVE PART IS SMALL AT
+  12.5 BAR.** -0.5 % across all four knobs, against ATHAD_COND's +13.8 % at 60 bar and ATHAD's
+  -15 % at 250 bar. Four Lambda sweeps fall further short the thicker the column, so a thin
+  column should barely move — and it does not. **That is one point, not an attribution**; the
+  one-knob decomposition has not been run.
+
+  **(4) `Psi_max` IS STILL AT THE GROUND, AND `div(rho u)/rho` GOT WORSE.** ATHAD's result that
+  ten projection sweeps move the global maximum of `Psi` off the ground **does not reproduce**:
+  it is at z = 0 m in both arms here, 27 % smaller and still the spurious surface flux.
+  Meanwhile the divergence residual rose **62 %**, present at the first diagnostic. **This tree
+  carries the decisive evidence on attribution**: its OLR moved -0.5 % while its divergence rose
+  62 %, so the rise cannot be a radiative side-effect — the suspect is `ATM_PROJ_SWEEPS`.
+  **NOT ATTRIBUTED**, and ATHAD never measured `div` against that knob (its item 72 varied
+  `ATM_PRESS_SWEEPS`, the time loop). If it holds, converging the initial projection improves
+  `Psi(ground)` and worsens the running divergence — the same shape as ATHAD item 80's metric
+  result.
 
 - **The saturation-adjustment knobs are ported, and this fork is the control that settles what
   `alpha_entry` is worth** (ATHAD README item 64). `ATM_SAT_TRACE=1` (print-only) and
