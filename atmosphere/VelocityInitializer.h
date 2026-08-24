@@ -257,13 +257,24 @@ private:
     // jets as well as the cells and confound the measurement. This is a change to the
     // MERIDIONAL CIRCULATION only.
     //
-    // Default OFF, so every number recorded before this knob is reproducible and the
-    // off-branch is bit-identical. n <= 2 is unaffected either way (cell 0 is already
-    // direct and cell 1, if present, is already the polar/indirect one).
+    // **DEFAULT ON IN ATHAD_PERID SINCE 2026-08-24; `ATM_CELL_ALTERNATE=0` restores the
+    // co-rotating stack exactly.** It is default OFF in ATHAD and ATHAD_COND, which is the
+    // one deliberate difference between the three copies of this file. n <= 2 is unaffected
+    // either way (cell 0 is already direct and cell 1, if present, is already the
+    // polar/indirect one).
+    //
+    // Flipped here first because this fork is where the prescribed profile does the most
+    // damage: its shell is 15.5 scale heights, so the initial wind pattern and the mass it
+    // has to balance are further apart than in either sibling, and `Psi(ground)` -- which
+    // must be zero -- was 17.2x the interior circulation before the tropopause repair of
+    // the same day. A stack of four co-rotating cells whose column-integrated mass fluxes
+    // ADD is the wrong initial condition to hand a projection that then has to remove the
+    // divergence, and `edgeRadialCoeff` has always assumed the parity the cores did not.
     // ==================================================================
     static bool alternateCells(){
         static const bool on = [](){
-            const char* e = getenv("ATM_CELL_ALTERNATE"); return e && atoi(e) != 0; }();
+            const char* e = getenv("ATM_CELL_ALTERNATE");
+            return e ? (atoi(e) != 0) : true; }();
         return on;
     }
 

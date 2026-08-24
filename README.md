@@ -583,6 +583,73 @@ over the 1 bar reference". Both describe ATHAD; here it is 60 bar. The code is r
 
 ## Remaining work
 
+- **`ATM_CELL_ALTERNATE` IS THE DEFAULT HERE SINCE 2026-08-24, AND IT TURNS A SINGLE-SIGNED
+  DRIFT INTO A FIVE-CELL HEMISPHERE** (ATHAD README item 69). `ATM_CELL_ALTERNATE=0` restores
+  the old branch exactly. It stays default OFF in ATHAD and ATHAD_COND — the one deliberate
+  difference between the three copies of `VelocityInitializer.h`.
+
+  **The defect.** `centreAmp` returns `cellHadley` for k = 0, `cellPolar` for k = n-1 and a
+  **Ferrel copy for everything in between** — and Earth's polar template already carries the
+  Ferrel sense. At `n_cells_hemisphere` = 5 the prescribed `v_trop` sequence is therefore
+
+      direct(-3.000) / indir.(4.000) / indir.(4.000) / indir.(4.000) / indir.(0.500)
+      1 of 4 adjacent pairs counter-rotate, 1 direct / 4 indirect   <- CO-ROTATING STACK
+
+  Four of the five cells turn the same way and their column-integrated mass fluxes **add**.
+  The same file has always assumed the opposite: `edgeRadialCoeff` returns
+  `(k % 2 == 0) ? mag : -mag`, so the ascent and descent branches at the cell EDGES alternate
+  by parity, which is only correct if the CORES alternate too. Shipped, `u` and `v` disagreed
+  about how many cells there are — a divergence written into the initial condition, which
+  `project_initial_velocity` then exists to remove. With the knob on:
+
+      direct(-3.000) / indir.(4.000) / direct(-4.000) / indir.(4.000) / direct(-0.500)
+      4 of 4 adjacent pairs counter-rotate, 3 direct / 2 indirect
+
+  Only the SENSE is imposed, by flipping `v_trop` and `v_surf` together, so each cell keeps its
+  own magnitude and vertical structure. The zonal wind is deliberately NOT flipped: that is the
+  jet, set by thermal-wind balance, and flipping it would change the jets as well as the cells.
+
+  **MEASURED, 40 iterations, 24 threads, one binary, env-only arms. The structural effect is
+  large and every scalar is small — read them in that order.**
+
+  Sign bands of `Psi` across the northern hemisphere (`survival.py`), by height:
+
+  | arm | 0 km | 2 km | 5 km | 9 km | 15 km | 22 km |
+  |---|---|---|---|---|---|---|
+  | off | 1 | 1 | 1 | 2 | 2 | 2 |
+  | **on** | **4** | **4** | **4** | **5** | **4** | **4** |
+
+  identical at iterations 20 and 40, so it is not destroyed on contact. **That is the whole
+  point of the knob: shipped, this fork did not have a multi-cell circulation to argue about,
+  it had a single-signed drift with a two-band core.** Every `n_cells_hemisphere` argument
+  inherited from ATHAD was made about a layout that was not a multi-cell circulation.
+
+  The scalars:
+
+  | | off | on |
+  |---|---|---|
+  | OLR | 136.28 W/m2 | 136.28 (identical) |
+  | photosphere | 18.1 km | 18.1 km (identical) |
+  | max cloud water | 3.786549 g/kg | 3.786790 |
+  | `Psi_max` | 5548.82 | **5548.82 (identical)** |
+  | max `Psi(i=0)` | 5.549e12 | **5.549e12 (identical)** |
+  | **RMS `Psi(i=0)`** | 1.201e12 | **1.100e12 (-8.4 %)** |
+  | closure ratio | 2.404 | 2.201 |
+  | `div(rho u)/rho` rms | 4.935e-02 | 5.110e-02 (**+3.5 %, worse**) |
+
+  **`Psi_max` AND max `Psi(i=0)` ARE IDENTICAL, AND THAT IS A CONFIRMATION RATHER THAN A NULL.**
+  ATHAD item 68's method note says `Psi(ground)` must be read as an RMS over latitude and not
+  as a max, because the max sits inside the Hadley cell and a change localised elsewhere reads
+  as bit-identical while the field moves. The Hadley cell is k = 0, which is EVEN and therefore
+  already direct — the knob does not touch it. So the max cannot move by construction, and the
+  entire effect appears in the RMS and in the band count. **Anyone reading this knob through
+  `Psi_max` would conclude it does nothing.**
+
+  **It is not a cure and does not claim to be**: the closure ratio goes 2.404 -> 2.201, and
+  `div(rho u)/rho` gets 3.5 % WORSE. The co-rotating stack was never the main driver of the
+  `Psi` non-closure — the height-linear velocity profile is (see the tropopause entry above),
+  and that repair is still unwritten.
+
 - **THE VERTICAL GRID CAN BE PLACED BY MASS INSTEAD OF BY METRES (`ATM_GRID_PRESSURE=1`,
   default off), AND IT IS NOT THE Psi REPAIR** (2026-08-24). Written for this fork because the
   mismatch is worst here; the off-branch is bit-identical and the measurement is below.
