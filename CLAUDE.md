@@ -352,6 +352,35 @@ should be re-examined.
 
 ## Open risks
 
+> **THIS SECTION WAS COPIED FROM `ATHAD_COND` AND IS BYTE-IDENTICAL TO IT** (diffed 2026-08-29:
+> `diff <(sed -n '344,$p' ATHAD_COND/CLAUDE.md) <(sed -n '353,$p' ATHAD_PERID/CLAUDE.md)` is
+> empty). Every measured number below was taken in ATHAD_COND. **None of them has been
+> re-measured here**, and this fork is a different atmosphere — 12.5 bar CO2-dominated at
+> 358.15 K, `M_mean` 39.278 g/mol, `R_mix` 211.68 — so they are a PRIOR inherited from the
+> parent fork, not results.
+>
+> **What DOES carry, and why.** The grid is identical: `im` = 61, `zeta` = 3.0,
+> `L_atm` = 6287.5 in both. So the two GRID-DERIVED facts transfer exactly — the
+> `checkRadialMetric` spread of **12.29x** (it depends only on `zeta` and `im`) and
+> `drag_n_layers = 5` meaning **1 786 m** of physical depth. Those two can be read as this
+> fork's own.
+>
+> **What does NOT carry**: every physics measurement. The photosphere at 59.7 km / 278.6 K,
+> `tau_above` 2.55e6, `tau_layer` 1.11e5, `N2` 4.30e-5, `Psi` 4.2212365e13, the whole `ubud_*`
+> table (`ubud_pgf` 0.100816 and the rest), the OLR 283.81 against sigma*T_lid^4 = 270.62 and
+> its -13.03 W/m2 imbalance, and `ATM_MC_GEOPOTENTIAL`'s `max c_u` 3.116e-03 at 24 854 m with
+> its 20 km convective column. All of those are ATHAD_COND's atmosphere.
+>
+> **Three sentences below are self-referential and read as nonsense here**: "Unverified in this
+> fork — no COND run has been made against the renamed writers" (this is not COND); "the reason
+> it works here and not in ATHAD is geometry: **this fork's** convective column is 20 km deep";
+> and "treat **COND's own** 0.004-0.03 % OLR deltas as inside the envelope until the same null
+> pair is run here".
+>
+> The text is kept rather than deleted because a fork cut from ATHAD_COND inherits its structure
+> and these remain the right things to look for. **Re-measure before quoting any of it.**
+
+
 - **Field names changed 2026-08-20** (ported from ATHAD README item 61). The Brunt-Vaisala
   frequency squared is `brunt_N2` in the code and `BruntVaisala_N2` in the VTK files — it used to
   be `N2`, in the same file as nitrogen's `q_N2`. The eight species are written under bare names
