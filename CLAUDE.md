@@ -352,6 +352,18 @@ should be re-examined.
 
 ## Open risks
 
+- **THE CONVECTION SCHEME IS A MOIST CONVECTIVE ADJUSTMENT SINCE 2026-10-10; TIEDTKE IS NOT CALLED**
+  (README, first section; the user's instruction). `ATM_CONV_SCHEME=tiedtke` restores it, and
+  every number recorded before that date needs it. `adjust` adds no routine: `densities()`
+  already rebuilds `t` on the moist adiabat every moist step (invariant 4) and
+  `SaturationAdjustment` + the ice scheme condense and rain; `adjust` stops calling
+  `MoistConvection` and zeroes `MC_t`, `MC_q`, `MC_v`, `MC_w`, `P_conv` and the updraft / downdraft
+  fields. Measured here, 20 iterations, 8 threads: 127 of 180 printed extrema identical, the
+  scheme's own fields go to zero, everything else moves in the 6th-9th digit. **ATHAD_COND's
+  findings about the mass-flux scheme (no rain, the `iter_prec` parity cycle) were NOT repeated
+  in this tree. 20 iterations only.** (This bullet is this tree's own; the rest of the section
+  is ATHAD_COND's, as the note below says.)
+
 > **THIS SECTION WAS COPIED FROM `ATHAD_COND` AND IS BYTE-IDENTICAL TO IT** (diffed 2026-08-29:
 > `diff <(sed -n '344,$p' ATHAD_COND/CLAUDE.md) <(sed -n '353,$p' ATHAD_PERID/CLAUDE.md)` is
 > empty). Every measured number below was taken in ATHAD_COND. **None of them has been

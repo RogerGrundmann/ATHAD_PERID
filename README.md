@@ -26,6 +26,43 @@ colder, with a genuinely CO₂-dominated composition — 78 mole-% CO₂ against
 water down from 56 mole-% to 4.6 %. The sea still sets the surface humidity, but it is a
 much drier atmosphere sitting on it.
 
+## The convection scheme is a moist convective adjustment since 2026-10-10 — the Tiedtke scheme is no longer called
+
+**`ATM_CONV_SCHEME=<adjust|tiedtke>`, default `adjust`, at the user's instruction** ("replace
+the Tiedtke scheme with a simple moist convective adjustment", then "the same switch in ATHAD
+and ATHAD_PERID"). `ATM_CONV_SCHEME=tiedtke` restores the mass-flux scheme. **Every number in
+this file recorded before this section was made with Tiedtke running.**
+
+**What `adjust` is in this tree — it adds no routine.** A moist convective adjustment holds a
+column on the moist adiabat where it is saturated and on the dry one where it is not, and lets
+the resulting condensate rain out. Both halves already run here on every moist step:
+`ThermoAtm::densities()` rebuilds `t` from the surface up with `SaturationH2O::moistLapse`
+(invariant 4), which is the hard limit of an adjustment, and `SaturationAdjustment` plus the ice
+scheme condense and precipitate. So `adjust` stops calling `MoistConvection` and zeroes `MC_t`,
+`MC_q`, `MC_v`, `MC_w`, `P_conv` and the updraft / downdraft fields (`convectionStep()` in
+`cAtmosphereModel.cpp`).
+
+**Why the mass-flux scheme goes.** It is `ATOM_Precipitation`'s Tiedtke scheme with Earth
+constants. In ATHAD_COND — whose `MoistConvection.h` was byte-identical to this tree's until that
+day — it was measured on 2026-10-10 to form no rain, to cycle with the parity of `iter_prec` once
+that is repaired, and, made consistent, to re-evaporate all the rain it forms (that tree's
+README). **None of those measurements was repeated here**, and this tree's 12.5 bar column is
+much closer to Earth's than ATHAD_COND's 60 bar, so they need not carry over in size.
+
+**Measured here** — `config_port_new.xml` with `nm` = 20, from scratch, 8 threads
+(`python/run_ca_tied`, `run_ca_adj`, `run_conv.sh`), last print: **127 of 180 printed extrema
+identical.** Of the 53 that differ, 37 are the scheme's own fields going to zero (`M_u` max 757,
+`MC_t` +2.8e-4 / −7.3e-5 K/s, `MC_q` ±1.4e-4 g/kg/s, `MC_v` ±2e-6, `MC_w` −1.2e-5 m/s2 — far
+from their caps, unlike ATHAD's). The other 16 move in the 6th to 9th digit: max temperature
+84.895765 → 84.895716 °C, max water vapour 20.998451 → 20.998413 g/kg, `Psi` 6.828286834e12 →
+6.828285945e12; the precipitation average is 283 824.00 mm/a in both. No NaN, both exit 0.
+**That is a statement about 20 iterations**; whether the lost convective transport of moisture
+and momentum matters needs a long run, not made.
+
+**Checks.** `ATM_CONV_SCHEME=tiedtke` against the binary before the change (`cli/perid_pre`):
+20 of 20 output files byte-identical, 2 iterations, 1 thread. Control, `adjust` against
+`tiedtke`: 2 of 20.
+
 ## The first baseline, and what it says the model cannot do yet
 
 40 iterations, 24 threads, shipped defaults, moist physics from iteration 0. **A baseline, not
