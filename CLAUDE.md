@@ -361,7 +361,10 @@ should be re-examined.
   fields. Measured here, 20 iterations, 8 threads: 127 of 180 printed extrema identical, the
   scheme's own fields go to zero, everything else moves in the 6th-9th digit. **ATHAD_COND's
   findings about the mass-flux scheme (no rain, the `iter_prec` parity cycle) were NOT repeated
-  in this tree. 20 iterations only.** (This bullet is this tree's own; the rest of the section
+  in this tree.** **The long run, 400 iterations, three arms (README; noise floor zero): this is
+  the tree where the scheme mattered most** — max T −0.107 K, up to 1.9 K in 109 cells near
+  1.9 bar, max vapour −0.41 %, mean-water drift +0.8855 % (`tiedtke`) against +1.0141 %
+  (`adjust`); winds unchanged to 1e-6; the vapour difference is still growing. (This bullet is this tree's own; the rest of the section
   is ATHAD_COND's, as the note below says.)
 
 > **THIS SECTION WAS COPIED FROM `ATHAD_COND` AND IS BYTE-IDENTICAL TO IT** (diffed 2026-08-29:

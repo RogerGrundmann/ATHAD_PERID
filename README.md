@@ -56,8 +56,38 @@ identical.** Of the 53 that differ, 37 are the scheme's own fields going to zero
 from their caps, unlike ATHAD's). The other 16 move in the 6th to 9th digit: max temperature
 84.895765 → 84.895716 °C, max water vapour 20.998451 → 20.998413 g/kg, `Psi` 6.828286834e12 →
 6.828285945e12; the precipitation average is 283 824.00 mm/a in both. No NaN, both exit 0.
-**That is a statement about 20 iterations**; whether the lost convective transport of moisture
-and momentum matters needs a long run, not made.
+**That is a statement about 20 iterations**; the long run follows.
+
+**The long run, 400 iterations (2026-10-10)** — `config_port_new.xml` with `nm` = 400, from
+scratch, 8 threads, three arms side by side: `adjust`, `tiedtke`, and `tiedtke` a second time as
+the noise floor (`python/run_long_adj`, `run_long_tied`, `run_long_tied2`, driven by
+ATHAD_COND's `python/run_long.sh`; 2 h 27 min wall). `cmp_extrema.py` reads the last printed extrema, `cmp_fields.py` the section VTKs of every
+checkpoint; the largest difference is taken over the three sections and given as a fraction of
+the field's range.
+
+- **The noise floor is zero**: the two Tiedtke runs agree in 180 of 180 extrema.
+- **113 of 180 extrema identical** between `tiedtke` and `adjust`; of the 67 that differ, 37 are
+  the scheme's own fields. The rest are **the largest of the three trees**: max temperature
+  80.338 → 80.231 °C (−0.107 K), max water vapour 17.701 → 17.628 g/kg (−0.41 %), max cloud
+  graupel −0.28 %, max radiation −0.11 %, max static pressure 12.3406 → 12.3368 bar, min `S_v`
+  +1.4 %, evaporation maxima −0.06 %.
+- **Fields at iteration 400**: temperature differs by up to **1.9 K in 109 cells of the zonal
+  section near 1.9 bar** (−42.4 against −40.5 °C; 5.3 K in 18 cells at iteration 50) and by
+  0.06 - 0.14 K broadly in the other two sections (rms 0.06 K); water vapour by 0.09 g/kg (rms
+  0.028; 5e-3 of its range, **still growing**: 1.9e-3 at iteration 200, 3.5e-3 at 350); cloud
+  water by 0.068 g/kg, flat since iteration 100. **The winds do not notice**: 1e-7 to 4e-6 of
+  their range.
+- **The mass-weighted mean water drifts +0.8855 % with `tiedtke` and +1.0141 % with `adjust`** —
+  the adjustment keeps more water in the air.
+- One transient in the precipitation of the radial section at iteration 250 (8 cells, 518
+  against 778 mm/d); gone at 300.
+- All arms exit 0, no NaN.
+
+**So this is the tree in which the scheme was doing something**: its tendencies were far from
+their caps here, and without them the lower atmosphere is about 0.1 K cooler at the ground, up
+to 2 K different in a thin layer near 2 bar, and holds 0.13 percentage points more water after
+400 iterations. Small against the state, not zero, and the vapour difference has not levelled
+off. Which of the two is nearer the truth this run cannot say.
 
 **Checks.** `ATM_CONV_SCHEME=tiedtke` against the binary before the change (`cli/perid_pre`):
 20 of 20 output files byte-identical, 2 iterations, 1 thread. Control, `adjust` against
