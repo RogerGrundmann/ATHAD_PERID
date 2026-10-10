@@ -364,7 +364,12 @@ should be re-examined.
   in this tree.** **The long run, 400 iterations, three arms (README; noise floor zero): this is
   the tree where the scheme mattered most** — max T −0.107 K, up to 1.9 K in 109 cells near
   1.9 bar, max vapour −0.41 %, mean-water drift +0.8855 % (`tiedtke`) against +1.0141 %
-  (`adjust`); winds unchanged to 1e-6; the vapour difference is still growing. (This bullet is this tree's own; the rest of the section
+  (`adjust`); winds unchanged to 1e-6; the vapour difference is still growing.
+  **ATHAD_COND's instruments and `ATM_MC_*` knobs are in this tree since 2026-10-10** (README,
+  second section; `MoistConvection.h` is ATHAD_COND's file byte for byte; all knobs default 0,
+  byte checks 20/20). First readings with `tiedtke`: **`g_p > 0` in 0 cells — no convective rain
+  here either, same cause** (environment cloud 2.36 g/kg detrained against `q_c_u` 1.06 g/kg);
+  no cap binds. So the long run's difference is the scheme's transport, not rain. (This bullet is this tree's own; the rest of the section
   is ATHAD_COND's, as the note below says.)
 
 > **THIS SECTION WAS COPIED FROM `ATHAD_COND` AND IS BYTE-IDENTICAL TO IT** (diffed 2026-08-29:

@@ -89,6 +89,43 @@ to 2 K different in a thin layer near 2 bar, and holds 0.13 percentage points mo
 400 iterations. Small against the state, not zero, and the vapour difference has not levelled
 off. Which of the two is nearer the truth this run cannot say.
 
+## ATHAD_COND's convection instruments and knobs are in this tree since 2026-10-10
+
+`atmosphere/MoistConvection.h` is ATHAD_COND's file again, byte for byte (the two were identical
+until that day), and `atmosphere/SaturationAdjustment.h` carries ATHAD_COND's budget
+(`a75b6ab`). That brings three instruments — `ATM_SATADJ_DIAG`, `ATM_MC_CAP_DIAG`, `ATM_MC_DIAG`
+with the permanent `[MC-GP]` census — and the knobs `ATM_MC_QC_DETRAIN`, `ATM_MC_EVAP_LIMIT`,
+`ATM_MC_QVD`, `ATM_MC_ED_AREA`, `ATM_MC_INLINE`, **all default 0**. ATHAD_COND's README
+describes each. **The `ATM_MC_*` ones act on a routine that runs only with
+`ATM_CONV_SCHEME=tiedtke`.**
+
+**Checks** (`python/run_inst.sh`, 2 iterations, 1 thread): `tiedtke` with every knob unset
+against the binary before the convection switch (`cli/perid_pre`), 20 of 20 output files
+byte-identical; `adjust` against the binary before this port (`cli/perid_long`), 20 of 20.
+
+**First readings** — `ATM_CONV_SCHEME=tiedtke` with the three instruments on, 20 iterations from
+scratch, 8 threads (`python/run_in_tied`), at iteration 20. **They repeat here what the previous
+section said had not been repeated:**
+
+- **The scheme forms no rain in this tree either, and for ATHAD_COND's reason.** `[MC-GP]`:
+  340 833 cells between cloud base and LFS in 64 261 active columns; warm enough in all of them,
+  `K_p > 0` in 276 572, `q_c_u > 0` in 30 515, **all three in 0; `g_p > 0` in 0.** In all 30 515
+  columns that carry updraft condensate, the step from base+1 to base+2 detrains more of the
+  ENVIRONMENT's cloud than the updraft holds: mean `step*D_u/M_u` 0.787, environment cloud
+  2.36 g/kg against `q_c_u` 1.06 g/kg, ratio 1.75 (ATHAD_COND: 0.89, 36.5 against 7.1 g/kg).
+- Column budget: generation, both evaporations and the ground all 0.0000 mm/a.
+- **No cap binds**: `MC_t`, `MC_q`, `MC_v`, `MC_w` truncated in 0 of 3 920 460 cells.
+- Every column is active; 67.56 % deep, 32.44 % shallow; cloud base and LFS on ADJACENT levels in
+  34 656 of 65 341 columns; mean base 1018 m, mean LFS 4417 m, mean `M_u` at the base
+  0.44 kg/(m2 s).
+- Saturation adjustment, last call, mm of column water: `phase_split` +0.0405, `fade` −0.1673,
+  nothing else; cumulative −1.3027. It closes (unattributed 1e-15). With `adjust`
+  (`python/run_in_adj`) the same to six digits.
+
+**So what the long run above measured as the scheme's effect is its TRANSPORT alone** — uncapped
+`MC_q` (and `MC_t`, which `densities()` discards) — not convective rain; it formed none. The
+repair knobs were not tried here.
+
 **Checks.** `ATM_CONV_SCHEME=tiedtke` against the binary before the change (`cli/perid_pre`):
 20 of 20 output files byte-identical, 2 iterations, 1 thread. Control, `adjust` against
 `tiedtke`: 2 of 20.

@@ -53,6 +53,31 @@ namespace AtomMoistConvection {
     // step*D can exceed M(i-1) on the deep layers. Form the two weights, floor both at zero,
     // divide by their sum. Bounded by construction, identical to the old expression whenever
     // nothing was clamped, and it needs no ceiling constant.
+    // ATM_MC_INLINE=<0|1|2>, default 0 = unchanged (2026-10-10; NOT an upstream knob).
+    //
+    // The iter_prec sub-iteration is a LAGGED fixed-point iteration and it does not converge:
+    // it cycles with period 2 (README, 2026-10-10). Two quantities are formed from what the
+    // PREVIOUS pass left behind:
+    //   e_d, e_p   in downdraftEntrainment, from P_conv of the previous pass -- so a pass
+    //              that sees un-evaporated rain evaporates all of it, and the next sees none;
+    //   g_p        in updraftEntrainment, from q_c_u of the previous pass, while q_c_u is
+    //              debited by g_p -- so much condensate makes much rain makes little condensate.
+    // Measured: convective rain at the ground 0 for iter_prec 3 and 5, ~3e7 mm/a for 4 and 6.
+    //
+    // =1  e_d and e_p are evaluated in downdraftRecurrence's own downward walk, at the flux
+    //     ARRIVING at the level plus the rain made there -- the same supply ATM_MC_EVAP_LIMIT
+    //     charges them against -- with the law, the deficit (qvDown) and the area weighting
+    //     (ATM_MC_ED_AREA) exactly as downdraftEntrainment writes them.
+    // =2  also g_p: in updraftRecurrence's upward walk, g_p of the level below is K_p times the
+    //     q_c_u this pass has just computed there, before it is debited from the level above.
+    static const int mc_inline = [](){
+        const char* e = getenv("ATM_MC_INLINE"); return e ? atoi(e) : 0; }();
+    static const bool mc_ed_area = [](){
+        const char* e = getenv("ATM_MC_ED_AREA"); return (e && atoi(e) != 0); }();
+    static const bool mc_evap_limit = [](){
+        const char* e = getenv("ATM_MC_EVAP_LIMIT"); return (e && atoi(e) != 0); }();
+    static const bool qc_detrain = [](){
+        const char* e = getenv("ATM_MC_QC_DETRAIN"); return (e && atoi(e) != 0); }();
     static const bool updraft_bounded = [](){
         const char* e = getenv("ATM_MC_UNBOUNDED_UPDRAFT"); return !(e && atoi(e) != 0); }();
 
@@ -190,6 +215,7 @@ public:
 
 
         for(int iter_prec = 1; iter_prec <= m.iter_prec; iter_prec++){
+            pass_now = iter_prec;             // read by ATM_MC_INLINE only
             updraftEntrainment(iter_prec);
             CloudBaseUpdate();
             updraftRecurrence();
@@ -199,8 +225,10 @@ public:
         }
 
         rhsForcing();
+        if(capDiagOn()) capDiag();        // ATM_MC_CAP_DIAG, print-only
         subTerrainFill();
 
+        if(mcDiag()) convDiag();          // ATM_MC_DIAG, print-only
 
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -217,6 +245,7 @@ private:
 
 
     // Precomputed data
+    int pass_now = 0;                         // the iter_prec pass in progress (ATM_MC_INLINE)
     std::vector<double> height_table;
     std::vector<double> step;
     std::vector<int8_t> land_surf;
@@ -1020,6 +1049,29 @@ void findCloudBaseLFS() {
 *
 */
 // ==================== DOWNDRAFT ENTRAINMENT ====================
+    // ATM_MC_QVD=<0|1|2>, default 0 = unchanged. Ported 2026-10-10 from ATOM_Precipitation
+    // `6b49292` (2026-09-25, default 0 there too).
+    //
+    // The downdraft humidity that e_d and e_p evaluate against is set to
+    // 0.5*(cloud + 0.98*q_sat): half the CLOUD-WATER array plus half saturation. The shape is
+    // Tiedtke's LFS mix of equal parts cloud air (saturated) and ENVIRONMENT air, whose humidity
+    // is the vapour c, not cloud water. =1 uses 0.5*(c + 0.98*q_sat); =2 a saturated downdraft,
+    // 0.98*q_sat (Tiedtke 1989).
+    //
+    // Why it is here: with ATM_MC_QC_DETRAIN and ATM_MC_EVAP_LIMIT on, this tree's convection
+    // forms 5.2e6 mm/a of rain and the downdraft evaporation e_d takes 100 % of it. The
+    // evaporative deficit q_sat - q_v_d is what e_d and e_p are proportional to; the README
+    // section of 2026-10-10 has what the two modes do to it.
+    static int mcQvd() { static const int v = [](){ const char* e = std::getenv("ATM_MC_QVD");
+                                                   return e ? std::atoi(e) : 0; }(); return v; }
+    double qvDown(int i, int j, int k, double q_sat) const {
+        switch (mcQvd()) {
+            case 1:  return 0.5 * (m.c.x[i][j][k] + AtomMoistConvection::scale * q_sat);
+            case 2:  return AtomMoistConvection::scale * q_sat;
+            default: return 0.5 * (cloud.x[i][j][k] + AtomMoistConvection::scale * q_sat);
+        }
+    }
+
     void downdraftEntrainment(int iter_prec) {
         using namespace AtomMoistConvection;
 
@@ -1045,7 +1097,7 @@ void findCloudBaseLFS() {
                 double E_sat = SaturationH2O::saturationPressureAuto(t_u);
                 double q_sat = safe_q_sat(E_sat, p_u, m.c.x[i_lfs][j][k]);
 
-                m.q_v_d.x[i_lfs][j][k] = 0.5 * (cloud.x[i_lfs][j][k] + scale * q_sat);
+                m.q_v_d.x[i_lfs][j][k] = qvDown(i_lfs, j, k, q_sat);
 
                 // ATHAD: local mixture gas constant, not R_Air with a virtual-temperature
                 // expansion that assumes water is a trace. Matches ThermoAtm::densities().
@@ -1086,7 +1138,7 @@ void findCloudBaseLFS() {
                     double E_sat = SaturationH2O::saturationPressureAuto(t_u);
                     double q_sat = safe_q_sat(E_sat, p_u, m.c.x[i][j][k]);
 
-                    m.q_v_d.x[i][j][k] = 0.5 * (cloud.x[i][j][k] + scale * q_sat);
+                    m.q_v_d.x[i][j][k] = qvDown(i, j, k, q_sat);
 
                     m.E_d.x[i][j][k] = eps_d * fabs(m.M_d.x[i][j][k]);
                     m.D_d.x[i][j][k] = del_d * fabs(m.M_d.x[i][j][k]);
@@ -1120,6 +1172,27 @@ void findCloudBaseLFS() {
                         m.e_d.x[i][j][k] = 0.0;
                     else{
                         double precip_i = m.P_conv.x[i][j][k];
+                        // ATM_MC_ED_AREA=<0|1>, default 0 = unchanged. Ported 2026-10-10 from
+                        // ATOM_Precipitation `c8f1489` (2026-09-29, default 0 there too).
+                        //
+                        // e_d applies the rain-evaporation law to the GRID-MEAN flux and is then
+                        // charged to the whole layer, while e_p above carries the precipitating
+                        // area fraction sigma_p. =1 evaluates the law in the rain shaft, at
+                        // P/sigma_p, and weights it by sigma_p: sigma*E(P/sigma).
+                        //
+                        // Why it matters here more than upstream: a layer of this column holds
+                        // ~16 000 kg/m2, 20-50x an Earth layer, so the unweighted law asks for
+                        // all the rain arriving in 80-100 % of the levels even at a 2 % deficit
+                        // (README, 2026-10-10, "the law is not the outlier, the layer is").
+                        if(mc_ed_area){
+                          if(precip_i > 0.0 && sigma_p > 0.0){
+                            const double P_s  = precip_i / sigma_p;
+                            m.e_d.x[i][j][k] = sigma_p * a_ev * (1.0 + b_ev * pow(P_s, 1.0/6.0))
+                                * (q_sat - m.q_v_d.x[i][j][k]) * pow(P_s, 4.0/9.0);
+                          }else{
+                            m.e_d.x[i][j][k] = 0.0;
+                          }
+                        }else
                         if(precip_i > 0.0){
                           double P_16 = pow(precip_i, 1.0/6.0);
                           double P_49 = pow(precip_i, 4.0/9.0);
@@ -1150,12 +1223,35 @@ void findCloudBaseLFS() {
                 int i_LFS  = i_LFS_local[j][k];
                 if(i_base < 0 || i_LFS <= i_base) continue;
 
+                // ATM_MC_INLINE=2: K_p's level test, as updraftEntrainment forms it.
+                double kp_height = 0.0;
+                if(mc_inline >= 2){
+                    const bool is_shallow  = m.convection_mode >= 1
+                                             && (m.p_stat.x[i_base][j][k] - m.p_stat.x[i_LFS][j][k])
+                                                < f_stat_diff * m.p_stat.x[0][j][k];
+                    const bool is_midlevel = m.convection_mode >= 2
+                                             && m.p_stat.x[i_base][j][k]
+                                                < f_stat_midlevel * m.p_stat.x[0][j][k];
+                    const double delta_i_c = (is_shallow || is_midlevel) ? 1.0e9
+                                           : (land_surf[j * m.km + k] ? 1000.0 : 500.0);
+                    kp_height = height_table[i_base] + delta_i_c;
+                }
+                auto g_p_inline = [&](int ii){
+                    const double K_p = (height_table[ii] > kp_height) ? bet_p : 0.0;
+                    return (pass_now > 1 && m.t.x[ii][j][k] * m.t_0 >= m.t_0)
+                           ? K_p * m.q_c_u.x[ii][j][k] : 0.0;
+                };
+
                 for(int i = i_base+1; i <= i_LFS-1; i++){
 
                     double t_u       = m.t.x[i-1][j][k] * m.t_0;
                     double r_h_prev  = m.r_humid.x[i-1][j][k];
                     double step_prev = step[i-1];
                     double r_h_i     = m.r_humid.x[i][j][k];
+
+                    // ATM_MC_INLINE=2: the level below has its q_c_u of THIS pass; form its rain
+                    // generation from that before the line below debits it from this level.
+                    if(mc_inline >= 2 && i-1 > i_base) m.g_p.x[i-1][j][k] = g_p_inline(i-1);
 
                     double d_Mu = m.E_u.x[i-1][j][k] - m.D_u.x[i-1][j][k];
 
@@ -1177,6 +1273,22 @@ void findCloudBaseLFS() {
                     double dummy_q_c_u = M_u_prev * m.q_c_u.x[i-1][j][k]
                         + step_prev * (-m.D_u.x[i-1][j][k] * cloud.x[i-1][j][k]
                         - r_h_prev * m.g_p.x[i-1][j][k]);
+                    // ATM_MC_QC_DETRAIN=<0|1>, default 0 = unchanged (upstream ATOM_Precipitation `f90c462`).
+                    // The line above detrains `cloud` -- the ENVIRONMENT's cloud water -- out of the updraft's
+                    // condensate, where a detraining updraft loses its OWN q_c_u. Upstream the environment's
+                    // cloud is ~0.009 g/kg and the error under-detrains; HERE IT IS 36.5 g/kg against 7.1 g/kg
+                    // carried, at step*D_u/M_u = 0.89, so one level takes 4.6x what the updraft holds:
+                    // q_c_u goes negative at base+2 in EVERY column (64 261 of 64 261, measured 2026-10-10), is
+                    // clipped to zero from there up, and g_p = K_p*q_c_u is identically zero -- the scheme
+                    // convects everywhere and rains nowhere. =1 detrains q_c_u.
+                    //
+                    // DO NOT SET IT ALONE. With it, g_p forms (7.7e6 mm/a at the first call) and the downdraft
+                    // and sub-cloud evaporation, which rhsForcing() applies in full whether or not the rain
+                    // exists, demand 11 000x the generation: MC_t's latent half exceeds its cap in 55 % of
+                    // all cells, 100 % of it cooling, and MC_q in 56 %. That is upstream's ATM_MC_EVAP_LIMIT
+                    // defect (`e8d06ce`), not yet ported; this knob waits for it.
+                    if (qc_detrain)
+                        dummy_q_c_u += step_prev * m.D_u.x[i-1][j][k] * (cloud.x[i-1][j][k] - m.q_c_u.x[i-1][j][k]);
 
                     double dummy_vel_v_u = M_u_prev * m.v_u.x[i-1][j][k]
                         + step_prev * m.E_u.x[i-1][j][k] * m.v.x[i-1][j][k];
@@ -1305,6 +1417,13 @@ void findCloudBaseLFS() {
                         m.g_p.x[i][j][k]   = 0.0; m.c_u.x[i][j][k] = 0.0; m.e_l.x[i][j][k] = 0.0;
                     }
                 } // end i
+
+                // ATM_MC_INLINE=2: the top level the walk computed has no level above to do it.
+                if(mc_inline >= 2 && i_LFS-1 > i_base){
+                    const int it = i_LFS-1;
+                    const double t_b = m.t.x[it-1][j][k] * m.t_0;       // the walk's own reset test
+                    m.g_p.x[it][j][k] = (is_land(m.h, it, j, k) || t_b <= t_00) ? 0.0 : g_p_inline(it);
+                }
             }
         }
     }
@@ -1320,6 +1439,17 @@ void findCloudBaseLFS() {
             for(int k = 0; k < m.km; k++){
 
                 int i_lfs_loc = i_LFS_local[j][k];
+
+                // ATM_MC_INLINE>=1: the precipitating area fraction, as downdraftEntrainment forms it.
+                const int i_base_loc = i_Base_local[j][k];
+                double sigma_p = 0.0;
+                if(mc_inline >= 1 && i_base_loc >= 0 && i_lfs_loc > i_base_loc){
+                    const double w_u_cb = fabs(m.w_u.x[i_base_loc][j][k]) * m.u_0;
+                    if(w_u_cb > 0.0)
+                        sigma_p = fabs(m.M_u.x[i_base_loc][j][k])
+                                  / (safe_r_humid(m.r_humid.x[i_base_loc][j][k]) * w_u_cb);
+                    sigma_p = std::min(sigma_p, 1.0);
+                }
 
                 for(int i = i_lfs_loc-1; i >= 0; i--){
 
@@ -1398,6 +1528,68 @@ void findCloudBaseLFS() {
                         m.s_d.x[i][j][k]   = 1.0; m.e_d.x[i][j][k] = 0.0; m.e_p.x[i][j][k] = 0.0;
                     }
 
+                    // ATM_MC_INLINE>=1: e_d and e_p from the flux arriving here plus the rain
+                    // made here, replacing what downdraftEntrainment formed from the previous
+                    // pass's P_conv. Same law, same deficit, same area weighting, same gates.
+                    if(mc_inline >= 1 && i > 0 && i_base_loc >= 0 && i_lfs_loc > i_base_loc
+                       && pass_now > 1 && !(is_land(m.h, i, j, k) || t_u <= t_00)){
+                        const double q_sat  = safe_q_sat(SaturationH2O::saturationPressureAuto(t_u),
+                                                         m.p_stat.x[i][j][k], m.c.x[i][j][k]);
+                        const double def    = q_sat - qvDown(i, j, k, q_sat);
+                        const double P_here = std::max(0.0, m.P_conv.x[i+1][j][k]
+                                                  + step[i] * m.r_humid.x[i][j][k] * m.g_p.x[i][j][k]);
+                        double ed = 0.0, ep = 0.0;
+                        if(P_here > 0.0){
+                            if(mc_ed_area){
+                                if(sigma_p > 0.0){
+                                    const double P_s = P_here / sigma_p;
+                                    ed = sigma_p * a_ev * (1.0 + b_ev * pow(P_s, 1.0/6.0))
+                                         * def * pow(P_s, 4.0/9.0);
+                                }
+                            }else{
+                                ed = a_ev * (1.0 + b_ev * pow(P_here, 1.0/6.0))
+                                     * def * pow(P_here, 4.0/9.0);
+                            }
+                            if(i <= i_base_loc && sigma_p > 0.0)
+                                ep = sigma_p * alf_1 * def * sqrt(1e1 / alf_2 * P_here / sigma_p);
+                        }
+                        m.e_d.x[i][j][k] = std::max(0.0, ed);
+                        m.e_p.x[i][j][k] = std::max(0.0, ep);
+                    }
+
+                    // ATM_MC_EVAP_LIMIT=<0|1>, default 0 = unchanged. Ported 2026-10-10 from
+                    // ATOM_Precipitation `e8d06ce` (2026-09-22), where it is the default and its knob
+                    // has since been retired.
+                    //
+                    // The recurrence below FLOORS P_conv at zero, so an evaporation demand larger
+                    // than the rain present is silently truncated in the RAIN FLUX -- while
+                    // rhsForcing() applies the FULL e_d + e_p to MC_t (cooling) and MC_q
+                    // (moistening). That is evaporation of water that does not exist. =1 charges
+                    // the level's evaporation against the rain ARRIVING plus the rain MADE there,
+                    // scaling e_d and e_p together. At i = 0 the recurrence passes the flux through
+                    // unchanged, so nothing evaporated there is backed: both are zeroed.
+                    //
+                    // In this tree the defect is dormant by default, because g_p is identically
+                    // zero (see ATM_MC_QC_DETRAIN in updraftRecurrence) and with it e_d and e_p;
+                    // it wakes the moment the updraft condensate survives. The README section of
+                    // 2026-10-10 has the measurement of both knobs together.
+                    if(mc_evap_limit){
+                        if(i == 0){
+                            m.e_d.x[i][j][k] = 0.0;
+                            m.e_p.x[i][j][k] = 0.0;
+                        }else{
+                            const double mdz    = step[i] * m.r_humid.x[i][j][k];               // kg/m2
+                            const double supply = std::max(0.0, m.P_conv.x[i+1][j][k]
+                                                              + mdz * m.g_p.x[i][j][k]);     // kg/(m2 s)
+                            const double demand = mdz * (m.e_d.x[i][j][k] + m.e_p.x[i][j][k]);
+                            if(demand > supply){
+                                const double f = (demand > 0.0) ? supply / demand : 0.0;
+                                m.e_d.x[i][j][k] *= f;
+                                m.e_p.x[i][j][k] *= f;
+                            }
+                        }
+                    }
+
                     // Precipitation from convection (skip i=0: flux arrives unchanged)
                     if(i > 0)
                         m.P_conv.x[i][j][k] = std::max(0.0, m.P_conv.x[i+1][j][k]
@@ -1425,6 +1617,15 @@ void findCloudBaseLFS() {
     // a theta_e-conserving ascent with local cp and true thicknesses — and it is what seeds M_u.
 
 // ==================== RHS FORCING ====================
+    // The three tendency caps, defined once so that rhsForcing() and the ATM_MC_CAP_DIAG census
+    // below cannot disagree about what "truncated" means. The values and their histories are
+    // at their use in rhsForcing().
+    struct McCaps {
+        static constexpr double t = 0.01;      // [K/s]
+        static constexpr double q = 2.0e-5;    // [(kg/kg)/s]
+        static constexpr double v = 0.01;      // [m/s2]
+    };
+
     void rhsForcing() {
         // Physical caps that break the convective feedback loop
         //   v,w → E_u (∝ v·∇c) → M_u (recurrence) → MC_v,MC_w (∝ M_u·(v_u−v))
@@ -1445,7 +1646,7 @@ void findCloudBaseLFS() {
         // u/v/w at ±100 m/s), so the old caps were the velocity forcing in disguise. New
         // values are 3–5× physical, so realistic convection is still untouched.
         const double M_max       = m.mc_M_max; // [kg/(m²s)]  up/downdraft mass flux, config parameter
-        constexpr double MCt_max = 0.01;       // [K/s]       convective heating      (was 0.05; ~36 K/hr, still 3× realistic)
+        constexpr double MCt_max = McCaps::t;  // 0.01 [K/s]  convective heating      (was 0.05; ~36 K/hr, still 3× realistic)
         // 2026-06-25: 2.0e-4 (=0.2 g/kg/s) let the convective moisture pump flood the
         // near-surface layer over high tropical orography (Ethiopian highlands 9°N/37°E,
         // cloud base ≈ surface at ~2500 m) — SaturationAdjustment then condensed it
@@ -1454,13 +1655,13 @@ void findCloudBaseLFS() {
         // physical convective environmental-moistening rate is ~0.02 g/kg/s, so 10× down
         // throttles the SatAdjust fuel while leaving realistic convection (P_conv,
         // detrainment aloft) untouched.  See project_convective_precip_zero.
-        constexpr double MCq_max = 2.0e-5;     // [(kg/kg)/s] convective moistening    (was 2.0e-4; flooded surface → SatAdjust runaway)
+        constexpr double MCq_max = McCaps::q;  // 2.0e-5 [(kg/kg)/s] convective moistening    (was 2.0e-4; flooded surface → SatAdjust runaway)
         // Healthy convective momentum transport is M_u·(v_u−v)/(step·ρ) ≈ 0.3·3/(400·1)
         // ≈ 2e-3 m/s². The old 0.5 cap (×coeff_MC_vel=6.25 → 3.125 non-dim RHS forcing)
         // was pinned at the Patagonian Andes (49°S/74°W) and drove the pressure solver to
         // p_dyn≈44000 hPa / t≈−1877°C at moist onset. 0.01 (~5× physical, 0.063 non-dim)
         // clips the runaway while leaving realistic convection untouched.
-        constexpr double MCv_max = 0.01;       // [m/s²]      convective momentum transport  (was 0.05)
+        constexpr double MCv_max = McCaps::v;  // 0.01 [m/s²] convective momentum transport  (was 0.05)
 
         auto safe_cap = [](double v, double mag) -> double {
             std::uint64_t bits;
@@ -1664,6 +1865,473 @@ void findCloudBaseLFS() {
                 }
             }
         }
+    }
+/*
+*
+*/
+// ==================== ATM_MC_CAP_DIAG: how hard the four caps are binding ====================
+    // ATM_MC_CAP_DIAG=1 -- print-only, default off. No field is written and rhsForcing() is not
+    // touched: this is a SECOND pass over the same arrays, made after rhsForcing() and before
+    // subTerrainFill(), that rebuilds the uncapped tendencies from the fields rhsForcing() read
+    // (it writes only MC_t, MC_q, MC_v, MC_w, none of which it reads) and counts.
+    //
+    // Ported 2026-10-10 from ATOM_Precipitation (`15fd99a`, `e8d06ce`, `f6f5642`; September
+    // 2026). There the census found that a maximum sitting exactly on a cap was not one cell
+    // but 15 % of the grid, with the raw value > 100x the cap in 10 % of it, and split by
+    // half it named three separate defects: a spare t_0 on the latent half, evaporation of
+    // rain that did not exist, and an updraft s divided by s_0 twice. ATHAD's README item 53
+    // asks the same question of THIS tree's caps -- MCt_max is annotated "3x realistic" for
+    // Earth and bounds a 60 bar column here -- and this is the instrument for it.
+    //
+    // A maximum cannot say whether a cap binds in one cell or a third of the grid, nor
+    // whether the raw value is 1.1x the cap or 1e4x it, and those are different things: a
+    // stabiliser doing its job, or a cap SETTING the answer. Counts only -- no sums of
+    // doubles -- so the figures are deterministic under OpenMP.
+    //
+    // What is printed: per tendency the cells truncated and the bands > 2x, > 10x, > 100x;
+    // for MC_t the two halves separately (the mass-flux divergence of s, and the latent term
+    // (L/cp)*conv_src); and for the cells where a half alone exceeds the cap, where they are
+    // and what they are made of. The s -> K factor and cp are rhsForcing()'s own.
+    static bool capDiagOn(){
+        static const bool v = [](){
+            const char* e = getenv("ATM_MC_CAP_DIAG"); return e && atoi(e) != 0; }();
+        return v;
+    }
+
+    void capDiag() const {
+        using namespace AtomMoistConvection;
+
+        long n_fluid = 0;
+        long nt_cap = 0, nt_x2 = 0, nt_x10 = 0, nt_x100 = 0;
+        long nq_cap = 0, nq_x2 = 0, nq_x10 = 0, nq_x100 = 0;
+        long nv_cap = 0, nv_x2 = 0, nv_x10 = 0, nv_x100 = 0;
+        long nw_cap = 0, nw_x2 = 0, nw_x10 = 0, nw_x100 = 0;
+        long nf_cap = 0, nf_x10 = 0, nf_x100 = 0;            // flux half of MC_t alone
+        long nl_cap = 0, nl_x10 = 0, nl_x100 = 0;            // latent half of MC_t alone
+        long fx_up = 0, fx_dn = 0, fx_edge = 0, fx_neg = 0, fx_100 = 0;
+        long fx_z0 = 0, fx_z1 = 0, fx_z2 = 0, fx_z3 = 0, fx_z4 = 0;
+        long fx_mu0 = 0, fx_mu1 = 0, fx_mu2 = 0, fx_mu3 = 0;
+        long fx_ds0 = 0, fx_ds1 = 0, fx_ds2 = 0, fx_ds3 = 0;
+        long lx_heat = 0, lx_cool = 0;
+        long lx_cu = 0, lx_ed = 0, lx_el = 0, lx_ep = 0;     // largest term of conv_src
+        long lx_z0 = 0, lx_z1 = 0, lx_z2 = 0, lx_z3 = 0, lx_z4 = 0;
+        long lx_mu0 = 0, lx_mu1 = 0, lx_mu2 = 0, lx_mu3 = 0;
+
+        const double M_max = m.mc_M_max;
+
+        #pragma omp parallel for collapse(2) schedule(static) \
+            reduction(+:n_fluid,nt_cap,nt_x2,nt_x10,nt_x100,nq_cap,nq_x2,nq_x10,nq_x100, \
+                        nv_cap,nv_x2,nv_x10,nv_x100,nw_cap,nw_x2,nw_x10,nw_x100, \
+                        nf_cap,nf_x10,nf_x100,nl_cap,nl_x10,nl_x100, \
+                        fx_up,fx_dn,fx_edge,fx_neg,fx_100,fx_z0,fx_z1,fx_z2,fx_z3,fx_z4, \
+                        fx_mu0,fx_mu1,fx_mu2,fx_mu3,fx_ds0,fx_ds1,fx_ds2,fx_ds3, \
+                        lx_heat,lx_cool,lx_cu,lx_ed,lx_el,lx_ep, \
+                        lx_z0,lx_z1,lx_z2,lx_z3,lx_z4,lx_mu0,lx_mu1,lx_mu2,lx_mu3)
+        for(int j = 0; j < m.jm; j++){
+            for(int k = 0; k < m.km; k++){
+                for(int i = m.i_topography[j][k]; i < m.im - 1; i++){
+                    n_fluid++;
+
+                    const double L_latent    = (m.t.x[i][j][k] * m.t_0 >= m.t_0) ? m.lv : m.ls;
+                    const double inv_step_rh = 1.0 / (step[i] * std::max(m.r_humid.x[i][j][k], 0.01));
+
+                    const double fs_up = -(m.M_u.x[i+1][j][k] * (m.s_u.x[i+1][j][k] - m.s.x[i+1][j][k])
+                                         - m.M_u.x[i][j][k]   * (m.s_u.x[i][j][k]   - m.s.x[i][j][k]));
+                    const double fs_dn = -(m.M_d.x[i+1][j][k] * (m.s_d.x[i+1][j][k] - m.s.x[i+1][j][k])
+                                         - m.M_d.x[i][j][k]   * (m.s_d.x[i][j][k]   - m.s.x[i][j][k]));
+                    const double conv_src = m.c_u.x[i][j][k] - m.e_d.x[i][j][k]
+                                          - m.e_l.x[i][j][k] - m.e_p.x[i][j][k];
+                    const double cp_mc  = AtmMixture::cp_of(m.c.x[i][j][k], m.co2.x[i][j][k],
+                                              m.t.x[i][j][k] * m.t_0, m.m_comp.M_bg);
+                    const double s_to_K = s_consistent ? (m.s_0 / m.cp_l) : m.t_0;
+
+                    const double raw_t_flux = (fs_up + fs_dn) * inv_step_rh * s_to_K;
+                    const double raw_t_lat  = (L_latent / cp_mc) * conv_src;
+                    const double raw_t      = raw_t_flux + raw_t_lat;
+
+                    const double raw_q = -((m.M_u.x[i+1][j][k] * (m.q_v_u.x[i+1][j][k] - m.c.x[i+1][j][k])
+                                          + m.M_d.x[i+1][j][k] * (m.q_v_d.x[i+1][j][k] - m.c.x[i+1][j][k]))
+                                         - (m.M_u.x[i][j][k]   * (m.q_v_u.x[i][j][k]   - m.c.x[i][j][k])
+                                          + m.M_d.x[i][j][k]   * (m.q_v_d.x[i][j][k]   - m.c.x[i][j][k])))
+                                         * inv_step_rh - conv_src;
+                    const double raw_v = -((m.M_u.x[i+1][j][k] * (m.v_u.x[i+1][j][k] - m.v.x[i+1][j][k])
+                                          + m.M_d.x[i+1][j][k] * (m.v_d.x[i+1][j][k] - m.v.x[i+1][j][k]))
+                                         - (m.M_u.x[i][j][k]   * (m.v_u.x[i][j][k]   - m.v.x[i][j][k])
+                                          + m.M_d.x[i][j][k]   * (m.v_d.x[i][j][k]   - m.v.x[i][j][k])))
+                                         * inv_step_rh * m.u_0;
+                    const double raw_w = -((m.M_u.x[i+1][j][k] * (m.w_u.x[i+1][j][k] - m.w.x[i+1][j][k])
+                                          + m.M_d.x[i+1][j][k] * (m.w_d.x[i+1][j][k] - m.w.x[i+1][j][k]))
+                                         - (m.M_u.x[i][j][k]   * (m.w_u.x[i][j][k]   - m.w.x[i][j][k])
+                                          + m.M_d.x[i][j][k]   * (m.w_d.x[i][j][k]   - m.w.x[i][j][k])))
+                                         * inv_step_rh * m.u_0;
+
+                    // A non-finite raw value is RESET to 0 by safe_cap rather than truncated;
+                    // charge it to the cap anyway, and never to a band.
+                    auto band = [](double raw, double cap, long& n1, long& n2, long& n10, long& n100){
+                        if(!AtomUtils::is_finite_safe(raw)){ n1++; return; }
+                        const double r = std::fabs(raw) / cap;
+                        if(r <= 1.0) return;
+                        n1++;
+                        if(r > 2.0)   n2++;
+                        if(r > 10.0)  n10++;
+                        if(r > 100.0) n100++;
+                    };
+                    long d2 = 0;
+                    band(raw_t,      McCaps::t, nt_cap, nt_x2, nt_x10, nt_x100);
+                    band(raw_t_flux, McCaps::t, nf_cap, d2,    nf_x10, nf_x100);
+                    band(raw_t_lat,  McCaps::t, nl_cap, d2,    nl_x10, nl_x100);
+                    band(raw_q,      McCaps::q, nq_cap, nq_x2, nq_x10, nq_x100);
+                    band(raw_v,      McCaps::v, nv_cap, nv_x2, nv_x10, nv_x100);
+                    band(raw_w,      McCaps::v, nw_cap, nw_x2, nw_x10, nw_x100);
+
+                    const double z  = height_table[i];
+                    const int    zb = (z < 2000.0) ? 0 : (z < 5000.0) ? 1 : (z < 10000.0) ? 2
+                                    : (z < 30000.0) ? 3 : 4;
+                    const double mu = std::max(std::fabs(m.M_u.x[i][j][k]), std::fabs(m.M_u.x[i+1][j][k]));
+                    const int    mb = (mu < 0.1) ? 0 : (mu < 1.0) ? 1 : (mu < 0.997 * M_max) ? 2 : 3;
+
+                    if(AtomUtils::is_finite_safe(raw_t_flux) && std::fabs(raw_t_flux) > McCaps::t){
+                        if(std::fabs(fs_up) >= std::fabs(fs_dn)) fx_up++; else fx_dn++;
+                        const bool eu = (m.M_u.x[i][j][k] == 0.0) != (m.M_u.x[i+1][j][k] == 0.0);
+                        const bool ed = (m.M_d.x[i][j][k] == 0.0) != (m.M_d.x[i+1][j][k] == 0.0);
+                        if(eu || ed) fx_edge++;
+                        if(zb == 0) fx_z0++; else if(zb == 1) fx_z1++; else if(zb == 2) fx_z2++;
+                        else if(zb == 3) fx_z3++; else fx_z4++;
+                        if(mb == 0) fx_mu0++; else if(mb == 1) fx_mu1++; else if(mb == 2) fx_mu2++; else fx_mu3++;
+                        const double ds = s_to_K * std::max(std::fabs(m.s_u.x[i][j][k] - m.s.x[i][j][k]),
+                                                            std::fabs(m.s_u.x[i+1][j][k] - m.s.x[i+1][j][k]));
+                        if(ds < 1.0) fx_ds0++; else if(ds < 3.0) fx_ds1++; else if(ds < 10.0) fx_ds2++; else fx_ds3++;
+                        if(ds > 100.0) fx_100++;
+                        if(m.s_u.x[i][j][k] < m.s.x[i][j][k]) fx_neg++;
+                    }
+
+                    if(AtomUtils::is_finite_safe(raw_t_lat) && std::fabs(raw_t_lat) > McCaps::t){
+                        if(raw_t_lat > 0.0) lx_heat++; else lx_cool++;
+                        const double a_cu = std::fabs(m.c_u.x[i][j][k]), a_ed = std::fabs(m.e_d.x[i][j][k]);
+                        const double a_el = std::fabs(m.e_l.x[i][j][k]), a_ep = std::fabs(m.e_p.x[i][j][k]);
+                        const double a_mx = std::max(std::max(a_cu, a_ed), std::max(a_el, a_ep));
+                        if(a_cu == a_mx) lx_cu++; else if(a_ed == a_mx) lx_ed++;
+                        else if(a_el == a_mx) lx_el++; else lx_ep++;
+                        if(zb == 0) lx_z0++; else if(zb == 1) lx_z1++; else if(zb == 2) lx_z2++;
+                        else if(zb == 3) lx_z3++; else lx_z4++;
+                        if(mb == 0) lx_mu0++; else if(mb == 1) lx_mu1++; else if(mb == 2) lx_mu2++; else lx_mu3++;
+                    }
+                }
+            }
+        }
+
+        if(n_fluid <= 0) return;
+        auto pc = [&](long n){ return 100.0 * (double)n / (double)n_fluid; };
+        printf("      AGCM: [MC CAP DIAG] iter %d.  fluid cells %ld;  caps MC_t %.3g K/s, MC_q %.3g (kg/kg)/s,"
+               " MC_v = MC_w %.3g m/s2, M_max %.3g kg/(m2 s)\n",
+               m.iter_n, n_fluid, McCaps::t, McCaps::q, McCaps::v, M_max);
+        auto row = [&](const char* name, long n1, long n2, long n10, long n100){
+            printf("      AGCM: [MC CAP DIAG]   %-5s truncated %ld (%.4f %%)   >2x %ld (%.4f %%)"
+                   "   >10x %ld (%.4f %%)   >100x %ld (%.4f %%)\n",
+                   name, n1, pc(n1), n2, pc(n2), n10, pc(n10), n100, pc(n100));
+        };
+        row("MC_t", nt_cap, nt_x2, nt_x10, nt_x100);
+        printf("      AGCM: [MC CAP DIAG]     flux half alone   over cap %ld (%.4f %%)   >10x %.4f %%   >100x %.4f %%\n",
+               nf_cap, pc(nf_cap), pc(nf_x10), pc(nf_x100));
+        printf("      AGCM: [MC CAP DIAG]     latent half alone over cap %ld (%.4f %%)   >10x %.4f %%   >100x %.4f %%\n",
+               nl_cap, pc(nl_cap), pc(nl_x10), pc(nl_x100));
+        row("MC_q", nq_cap, nq_x2, nq_x10, nq_x100);
+        row("MC_v", nv_cap, nv_x2, nv_x10, nv_x100);
+        row("MC_w", nw_cap, nw_x2, nw_x10, nw_x100);
+
+        const long fx_n = fx_up + fx_dn;
+        if(fx_n > 0){
+            auto pf = [&](long x){ return 100.0 * (double)x / (double)fx_n; };
+            printf("      AGCM: [MC CAP DIAG]   flux half over cap, %ld finite cells:  updraft-dominated %.2f %%"
+                   "  downdraft %.2f %%   at a mass-flux EDGE %.2f %%   parcel COLDER than environment"
+                   " (s_u < s) %.2f %%\n", fx_n, pf(fx_up), pf(fx_dn), pf(fx_edge), pf(fx_neg));
+            printf("      AGCM: [MC CAP DIAG]     height <2 km %.2f %%  2-5 %.2f %%  5-10 %.2f %%  10-30 %.2f %%"
+                   "  >30 km %.2f %%    max|M_u| <0.1 %.2f %%  0.1-1 %.2f %%  1-M_max %.2f %%  at M_max %.2f %%\n",
+                   pf(fx_z0), pf(fx_z1), pf(fx_z2), pf(fx_z3), pf(fx_z4),
+                   pf(fx_mu0), pf(fx_mu1), pf(fx_mu2), pf(fx_mu3));
+            printf("      AGCM: [MC CAP DIAG]     |s_u - s| in K <1 %.2f %%  1-3 %.2f %%  3-10 %.2f %%  >10 %.2f %%"
+                   "  (>100 %.2f %%)\n", pf(fx_ds0), pf(fx_ds1), pf(fx_ds2), pf(fx_ds3), pf(fx_100));
+        }
+        const long lx_n = lx_heat + lx_cool;
+        if(lx_n > 0){
+            auto pl = [&](long x){ return 100.0 * (double)x / (double)lx_n; };
+            printf("      AGCM: [MC CAP DIAG]   latent half over cap, %ld finite cells:  heating %.2f %%"
+                   "  cooling %.2f %%    largest term of conv_src:  c_u %.2f %%  e_d %.2f %%  e_l %.2f %%"
+                   "  e_p %.2f %%\n", lx_n, pl(lx_heat), pl(lx_cool), pl(lx_cu), pl(lx_ed), pl(lx_el), pl(lx_ep));
+            printf("      AGCM: [MC CAP DIAG]     height <2 km %.2f %%  2-5 %.2f %%  5-10 %.2f %%  10-30 %.2f %%"
+                   "  >30 km %.2f %%    max|M_u| <0.1 %.2f %%  0.1-1 %.2f %%  1-M_max %.2f %%  at M_max %.2f %%\n",
+                   pl(lx_z0), pl(lx_z1), pl(lx_z2), pl(lx_z3), pl(lx_z4),
+                   pl(lx_mu0), pl(lx_mu1), pl(lx_mu2), pl(lx_mu3));
+        }
+    }
+/*
+*
+*/
+// ==================== ATM_MC_DIAG: the convective precipitation budget ====================
+    // ATM_MC_DIAG=1 -- print the COLUMN BUDGET of the convective precipitation chain.
+    // Print-only, default off, no field is written.
+    //
+    // Ported 2026-10-10 from ATOM_Precipitation `11ec280` (2026-08-31), the core block only:
+    // upstream's later probes under the same knob ([MC-LO], [MC-RG], [BL-Q], ...) split by land
+    // and ocean and by Earth regions and are not carried.
+    //
+    // `P_conv` is an integral of three tendencies down the column,
+    //
+    //     P_conv[i] = max(0, P_conv[i+1] + dz*rho*(g_p - e_d - e_p)),
+    //
+    // and the surface value alone cannot say which of the four terms decided it: generation
+    // `g_p` never forms; the downdraft evaporates it (`e_d`); the sub-cloud layer evaporates
+    // it (`e_p`, which scales with `q_sat - q_v_d`); or the max(0, ...) truncates the column
+    // before the ground. A fifth candidate is upstream of all four: `K_p` is zero for shallow
+    // and midlevel convection (`delta_i_c` = 1e9), so a column can be fully active with `M_u`,
+    // `q_c_u` and a cloud base and still generate NOTHING because it was classified
+    // non-precipitating. The census counts that too.
+    //
+    // RAW SUMS OF e_d AND e_p ARE NOT A BUDGET (upstream's first version showed it): the
+    // evaporation terms are a DEMAND that every level truncates at the flux actually present.
+    // Walking the recurrence as downdraftRecurrence() walks it and charging each level only
+    // what it could take gives an identity instead,
+    //
+    //     G - e_d(applied) - e_p(applied) = P_conv(ground),
+    //
+    // checked against the model's own field in the same line, and the unmet remainder is
+    // reported separately. THAT REMAINDER MATTERS: rhsForcing() applies the FULL e_d + e_p to
+    // MC_t and MC_q whether or not the rain existed (upstream's ATM_MC_EVAP_LIMIT repairs it;
+    // not ported here yet), so "UNMET" is evaporation charged to the environment with no
+    // water behind it.
+    //
+    // Differences from upstream, all forced by this tree: the shallow / midlevel tests are
+    // fractions of the surface pressure (f_stat_*, item 63); saturation is SaturationH2O's
+    // with the exact mass fraction, and a cell that is supercritical or superheated
+    // (q_sat >= 1) has no relative humidity and is left out of the RH means; the walk runs to
+    // level 1 because this tree's recurrence sets P_conv[0] = P_conv[1].
+    // [MC-GP], part of ATM_MC_DIAG (2026-10-10): WHY g_p IS OR IS NOT FORMED. Print-only.
+    //
+    // g_p = K_p * q_c_u needs three things in the same cell of an active column: t >= t_0,
+    // a level more than delta_i_c above cloud base (K_p > 0), and updraft condensate. The
+    // first line counts each and their intersections. The second looks at the one step that
+    // decides the third here: the condensate recurrence from base+1 to base+2,
+    //
+    //     M_u*q_c_u  -  step*D_u*cloud   (+ what the parcel condenses),
+    //
+    // and counts the columns where the DETRAINED ENVIRONMENT CLOUD alone is at least what the
+    // updraft carries. See ATM_MC_QC_DETRAIN at updraftRecurrence() for what it found.
+    void gpCensus() const {
+        using namespace AtomMoistConvection;
+        long n_col = 0, n_cell = 0, n_T = 0, n_K = 0, n_q = 0, n_TK = 0, n_TKq = 0, n_g = 0, n_cu = 0;
+        long n2 = 0, n_neg = 0;
+        double gmax = 0.0, sr = 0.0, sc = 0.0, sq = 0.0, sratio = 0.0;
+        for(int j = 1; j < m.jm-1; j++) for(int k = 1; k < m.km-1; k++){
+            const int i_base = i_Base_local[j][k], i_lfs = i_LFS_local[j][k];
+            if(i_base < 0 || i_lfs <= i_base) continue;
+            n_col++;
+            const bool sh = m.convection_mode >= 1 && (m.p_stat.x[i_base][j][k] - m.p_stat.x[i_lfs][j][k])
+                                                       < f_stat_diff * m.p_stat.x[0][j][k];
+            const bool md = m.convection_mode >= 2 && m.p_stat.x[i_base][j][k]
+                                                       < f_stat_midlevel * m.p_stat.x[0][j][k];
+            const double dic = (sh || md) ? 1.0e9 : (land_surf[j * m.km + k] ? 1000.0 : 500.0);
+            for(int i = i_base+1; i <= i_lfs; i++){
+                n_cell++;
+                const bool T = m.t.x[i][j][k] * m.t_0 >= m.t_0;
+                const bool K = height_table[i] > height_table[i_base] + dic;
+                const bool q = m.q_c_u.x[i][j][k] > 0.0;
+                if(T) n_T++;
+                if(K) n_K++;
+                if(q) n_q++;
+                if(T && K) n_TK++;
+                if(T && K && q) n_TKq++;
+                if(m.g_p.x[i][j][k] > 0.0) n_g++;
+                if(m.c_u.x[i][j][k] > 0.0) n_cu++;
+                gmax = std::max(gmax, m.g_p.x[i][j][k]);
+            }
+            if(i_lfs < i_base + 3) continue;
+            const int i1 = i_base + 1;
+            const double Mp = m.M_u.x[i1][j][k];
+            if(!(Mp > 0.0)) continue;
+            const double keep = Mp * m.q_c_u.x[i1][j][k];
+            const double lose = step[i1] * m.D_u.x[i1][j][k] * cloud.x[i1][j][k];
+            n2++;
+            if(lose >= keep) n_neg++;
+            sr += step[i1] * m.D_u.x[i1][j][k] / Mp;
+            sc += cloud.x[i1][j][k];
+            sq += m.q_c_u.x[i1][j][k];
+            sratio += (keep > 0.0) ? lose / keep : 0.0;
+        }
+        printf("      AGCM: [MC-GP] cells base+1..LFS of %ld active columns: %ld;  t >= t_0 in %ld,  K_p > 0 in %ld,"
+               "  q_c_u > 0 in %ld,  t & K_p in %ld,  all three in %ld;  g_p > 0 in %ld (max %.3e /s);"
+               "  parcel condensation c_u > 0 in %ld\n",
+               n_col, n_cell, n_T, n_K, n_q, n_TK, n_TKq, n_g, gmax, n_cu);
+        if(n2 > 0)
+            printf("      AGCM: [MC-GP] step base+1 -> base+2 in %ld columns: detrained ENVIRONMENT cloud >= the condensate the"
+                   " updraft carries in %ld;  mean step*D_u/M_u %.3f,  mean env cloud %.4f g/kg,  mean q_c_u %.4f g/kg,"
+                   "  mean detrained/carried %.2f   (ATM_MC_QC_DETRAIN = %d, ATM_MC_EVAP_LIMIT = %d, ATM_MC_QVD = %d, ATM_MC_ED_AREA = %d, ATM_MC_INLINE = %d, iter_prec = %d)\n",
+                   n2, n_neg, sr / n2, 1e3 * sc / n2, 1e3 * sq / n2, sratio / n2, (int)qc_detrain, (int)mc_evap_limit, mcQvd(), (int)mc_ed_area, mc_inline, m.iter_prec);
+    }
+
+    static bool mcDiag(){
+        static const bool v = [](){
+            const char* e = getenv("ATM_MC_DIAG"); return e && atoi(e) != 0; }();
+        return v;
+    }
+
+    void convDiag() const {
+        using namespace AtomMoistConvection;
+        using namespace std;
+
+        // P_conv is [kg/(m2 s)] = [mm/s].
+        const double s_per_year = 365.0 * 8.64e4;
+
+        double w_tot = 0.0, w_act = 0.0, w_kp = 0.0, w_dead = 0.0;
+        double w_deep = 0.0, w_shallow = 0.0, w_midlevel = 0.0;
+        double G = 0.0, Ed = 0.0, Ep = 0.0, Unmet = 0.0;      // APPLIED, cos-lat weighted
+        double Pbase = 0.0, Pwalk = 0.0, Pfield = 0.0;
+        double qcu_sum = 0.0, qcu_w = 0.0, qcu_max = 0.0;
+        int qmi = 0, qmj = 0, qmk = 0;
+        double mu_sum = 0.0, sig_sum = 0.0, hbase_sum = 0.0, htop_sum = 0.0;
+        double rh_sub = 0.0, rh_w = 0.0, dq_sub = 0.0, rh_all = 0.0, rh_all_w = 0.0;
+        long n_act = 0, n_adjacent = 0;
+
+        for(int j = 0; j < m.jm; j++){
+            const double w = cos((j / (double)(m.jm - 1) - 0.5) * M_PI);
+            for(int k = 0; k < m.km; k++){
+                w_tot += w;
+
+                const int i_mount = m.i_topography[j][k];
+                Pfield += w * m.P_conv.x[i_mount][j][k];
+
+                const int i_base = i_Base_local[j][k];
+                const int i_lfs  = i_LFS_local[j][k];
+                if(i_base < 0 || i_lfs <= i_base) continue;
+                w_act += w; n_act++;
+                if(i_lfs == i_base + 1) n_adjacent++;       // the updraft recurrence is an empty loop
+
+                // The same classification updraftEntrainment applies, recomputed rather
+                // than stored.
+                const bool is_shallow  = m.convection_mode >= 1
+                                         && (m.p_stat.x[i_base][j][k] - m.p_stat.x[i_lfs][j][k])
+                                            < f_stat_diff * m.p_stat.x[0][j][k];
+                const bool is_midlevel = m.convection_mode >= 2
+                                         && m.p_stat.x[i_base][j][k]
+                                            < f_stat_midlevel * m.p_stat.x[0][j][k];
+                if(is_shallow)       w_shallow  += w;
+                else if(is_midlevel) w_midlevel += w;
+                else                 w_deep     += w;
+
+                const double delta_i_c = (is_shallow || is_midlevel) ? 1.0e9
+                                       : (land_surf[j * m.km + k] ? 1000.0 : 500.0);
+                const double height_base = height_table[i_base];
+
+                hbase_sum += w * height_base;
+                htop_sum  += w * height_table[i_lfs];
+                mu_sum    += w * m.M_u.x[i_base][j][k];
+
+                // Nordeng's precipitating area fraction, as downdraftEntrainment forms it.
+                double w_u_cb = fabs(m.w_u.x[i_base][j][k]) * m.u_0;
+                if(w_u_cb > 0.0)
+                    sig_sum += w * std::min(1.0, fabs(m.M_u.x[i_base][j][k])
+                               / (safe_r_humid(m.r_humid.x[i_base][j][k]) * w_u_cb));
+
+                // ---- the column budget, walked exactly as downdraftRecurrence walks it ----
+                double P = 0.0;                                    // P_conv[i_lfs] = 0
+                double P_at_base = 0.0;                            // this column's flux at cloud base
+                bool died = false;
+                for(int i = i_lfs-1; i >= std::max(1, i_mount); i--){
+                    const double dz  = step[i];
+                    const double rho = m.r_humid.x[i][j][k];
+                    const double gen   = dz * rho * m.g_p.x[i][j][k];
+                    const double dem_d = dz * rho * m.e_d.x[i][j][k];
+                    const double dem_p = dz * rho * m.e_p.x[i][j][k];
+                    const double avail = P + gen;
+                    const double dem   = dem_d + dem_p;
+                    const double app   = std::min(avail, dem);
+                    const double f_app = dem > 0.0 ? app / dem : 0.0;
+                    G     += w * gen;
+                    Ed    += w * f_app * dem_d;
+                    Ep    += w * f_app * dem_p;
+                    Unmet += w * (dem - app);
+                    P = std::max(0.0, avail - dem);
+                    if(i == i_base){ P_at_base = P; Pbase += w * P; }  // flux entering sub-cloud air
+                    if(i < i_base && P <= 0.0) died = true;
+                }
+                Pwalk += w * P;
+                if(died && P_at_base > 0.0) w_dead += w;
+
+                bool any_kp = false;
+                for(int i = i_base+1; i <= i_lfs; i++){
+                    if(height_table[i] > height_base + delta_i_c) any_kp = true;
+                    if(m.M_u.x[i][j][k] > 0.0){
+                        const double q = m.q_c_u.x[i][j][k];
+                        qcu_sum += w * q; qcu_w += w;
+                        if(q > qcu_max){ qcu_max = q; qmi = i; qmj = j; qmk = k; }
+                    }
+                }
+                if(any_kp) w_kp += w;
+
+                // Sub-cloud air: what e_p is proportional to.
+                for(int i = i_mount; i < i_base; i++){
+                    const double t_u = m.t.x[i][j][k] * m.t_0;
+                    if(t_u >= AtmMixture::T_CRIT_H2O) continue;
+                    const double q_sat = safe_q_sat(SaturationH2O::saturationPressureAuto(t_u),
+                                                    m.p_stat.x[i][j][k], m.c.x[i][j][k]);
+                    if(!(q_sat > 0.0 && q_sat < 1.0)) continue;
+                    rh_sub += w * m.c.x[i][j][k] / q_sat;
+                    dq_sub += w * (q_sat - m.q_v_d.x[i][j][k]);
+                    rh_w   += w;
+                }
+
+                // The same RH over the whole column, so the sub-cloud figure can be read
+                // against something.
+                for(int i = i_mount; i < m.im; i++){
+                    const double t_u = m.t.x[i][j][k] * m.t_0;
+                    if(t_u >= AtmMixture::T_CRIT_H2O) continue;
+                    const double q_sat = safe_q_sat(SaturationH2O::saturationPressureAuto(t_u),
+                                                    m.p_stat.x[i][j][k], m.c.x[i][j][k]);
+                    if(!(q_sat > 0.0 && q_sat < 1.0)) continue;
+                    rh_all += w * m.c.x[i][j][k] / q_sat; rh_all_w += w;
+                }
+            }
+        }
+
+        if(w_tot <= 0.0) return;
+        const double Gy  = G  * s_per_year / w_tot, Edy = Ed * s_per_year / w_tot;
+        const double Epy = Ep * s_per_year / w_tot, Uny = Unmet * s_per_year / w_tot;
+        const double Pby = Pbase * s_per_year / w_tot;
+        const double Pwy = Pwalk * s_per_year / w_tot, Pfy = Pfield * s_per_year / w_tot;
+        auto pc = [&](double x){ return Gy > 0.0 ? 1e2 * x / Gy : 0.0; };
+
+        gpCensus();
+        printf("      AGCM: [MC DIAG] iter %d.  active columns (i_LFS > i_base >= 0): "
+               "%.2f %% of the globe, cos-lat weighted;  of those deep %.2f %%, shallow %.2f %%, "
+               "midlevel %.2f %%;  columns reaching a level with K_p > 0: %.2f %%;"
+               "  base and LFS on ADJACENT levels in %ld of %ld active columns\n",
+               m.iter_n, 1e2 * w_act / w_tot,
+               w_act > 0.0 ? 1e2 * w_deep / w_act : 0.0,
+               w_act > 0.0 ? 1e2 * w_shallow / w_act : 0.0,
+               w_act > 0.0 ? 1e2 * w_midlevel / w_act : 0.0,
+               1e2 * w_kp / w_tot, n_adjacent, n_act);
+        printf("      AGCM: [MC DIAG] column budget, APPLIED, cos-lat GLOBAL mean, mm/a:"
+               "  generation g_p %.4f  -  downdraft e_d %.4f  -  sub-cloud e_p %.4f"
+               "  =  ground %.4f   (P_conv field at the surface %.4f)\n",
+               Gy, Edy, Epy, Pwy, Pfy);
+        printf("      AGCM: [MC DIAG] as shares of generation:  e_d %.2f %%,  e_p %.2f %%,"
+               "  surviving to the ground %.2f %%;  flux leaving cloud base %.4f mm/a;"
+               "  UNMET evaporative demand %.4f mm/a = %.1f x generation;"
+               "  columns whose flux dies below cloud base %.2f %%\n",
+               pc(Edy), pc(Epy), pc(Pwy), Pby, Uny, Gy > 0.0 ? Uny / Gy : 0.0,
+               1e2 * w_dead / w_tot);
+        printf("      AGCM: [MC DIAG] updraft above cloud base:  mean q_c_u = %.6f g/kg over"
+               " %.2f cells per active column,  max %.6f g/kg @(i=%d,j=%d,k=%d)\n",
+               qcu_w > 0.0 ? 1e3 * qcu_sum / qcu_w : 0.0,
+               w_act > 0.0 ? qcu_w / w_act : 0.0, 1e3 * qcu_max, qmi, qmj, qmk);
+        printf("      AGCM: [MC DIAG] cloud base:  mean M_u = %.6f kg/m2/s,  mean sigma_p ="
+               " %.6f,  mean base %.0f m,  mean LFS %.0f m\n",
+               w_act > 0.0 ? mu_sum / w_act : 0.0, w_act > 0.0 ? sig_sum / w_act : 0.0,
+               w_act > 0.0 ? hbase_sum / w_act : 0.0, w_act > 0.0 ? htop_sum / w_act : 0.0);
+        printf("      AGCM: [MC DIAG] sub-cloud layer of the active columns:  mean RH = %.4f,"
+               "  mean (q_sat - q_v_d) = %.4f g/kg;  whole-column mean RH = %.4f"
+               "  (cells with 0 < q_sat < 1 only)\n",
+               rh_w > 0.0 ? rh_sub / rh_w : 0.0, rh_w > 0.0 ? 1e3 * dq_sub / rh_w : 0.0,
+               rh_all_w > 0.0 ? rh_all / rh_all_w : 0.0);
     }
 };
 /*
