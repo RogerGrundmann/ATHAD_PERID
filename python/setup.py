@@ -6,7 +6,7 @@ extensions = [
               ['pyperid.pyx', 'PythonStream.cpp'],
               language = 'c++',
               extra_compile_args=["-std=c++17"],
-              libraries = ['cond'],
+              libraries = ['perid'],
               include_dirs = ['../atmosphere', '../lib', '../tinyxml2'],
               library_dirs = ['..'],
               extra_link_args = ['-fopenmp'],
