@@ -547,6 +547,20 @@ every output file byte-identical; `ATM_PROGNOSTIC_T=1 ATM_CONV_ADJ_MOIST=1`, 4 i
 adjustment acts in every column (max 2 sweeps, max dT ~1 K, enthalpy drift ~1e-15). Not yet measured: what
 the free top does over a real run (ATHAD's items 45-46, 65-67 and 79 are the record of what happened there).
 
+
+## `ATM_IM` -- the number of radial levels is a build option (2026-11-26, default 61)
+
+User: "is it finally possible to have im=41 in COND and PERID like in ATHAD", then "add the im option". `static const
+int im = ATM_IM` in `cAtmosphereModel.h` (default 61, `static_assert` 5..81 = `lib/Array.cpp` MAXI); `make clean &&
+make perid IM=41` builds it (objects of different im must not be linked together, hence the clean). Unset = every
+output file byte-identical to the build before (`python/run_im41.sh`, 2 it, 1 thread, 13/13).
+
+Use it with the pressure grid and a `ATM_GRID_BETA` that keeps the bottom layer ~300 m, so `drag_n_layers` (a count of
+CELLS) keeps its depth: here `ATM_GRID_PRESSURE=1 ATM_GRID_PTOP=8.4e-4 ATM_GRID_BETA=2.46`, `t_skin` 221.08, lid 0.0116 bar / 36.45 km
+(first five layers ~350-380 m). Test 2026-11-26, 40 it from scratch, im 41 vs the same lid at im 61 (`run_gridp1`):
+OLR 135.45 = im 61, photosphere 26.4 vs 26.6 km, div rms 0.0273 vs 0.0306, RH max 238 vs 244 %; 23 min at 4 threads. Output and restarts of different im do not mix; `survival.py` / `psicheck.py` read
+`ATM_IM`.
+
 ---
 
 # Moved from README.md on 2026-11-26
