@@ -22,6 +22,7 @@
 #include "Utils.h"
 #include "SaturationH2O.h"
 #include "MixtureAtm.h"
+#include "TraceGasAtm.h"
 
 using namespace std;
 using namespace AtomUtils;
@@ -185,6 +186,9 @@ static double species_q(cAtmosphereModel& m, int n, int i, int j, int k){
     double q_v, q_c, q_b;
     const double q_l = m.cloud.x[i][j][k] + m.ice.x[i][j][k] + m.gr.x[i][j][k];
     AtmMixture::split(m.c.x[i][j][k], m.co2.x[i][j][k], q_v, q_c, q_b, q_l);
+    // ATM_TRACE_PROG: NH3 (n 4) and SO2 (n 7) are the prognostic fields, clamped to the background they belong to
+    if(TraceGas::on() && (n == 4 || n == 7))
+        return std::min(std::max(0.0, (n == 4 ? m.nh3 : m.so2).x[i][j][k]), q_b);
     return (n == 0) ? q_v : (n == 1) ? q_c : q_b * m.m_comp.f_bg[n - 2];
 }
 /*
@@ -748,7 +752,9 @@ void cAtmosphereModel::paraview_vtk_radial(string &Name_Bathymetry_File,
                 double q_v, q_c, q_b;
                 const double q_l = cloud.x[i_radial][j][k] + ice.x[i_radial][j][k] + gr.x[i_radial][j][k];
                 AtmMixture::split(c.x[i_radial][j][k], co2.x[i_radial][j][k], q_v, q_c, q_b, q_l);
-                const double q_n = (n == 0) ? q_v : (n == 1) ? q_c : q_b * f_n;
+                const double q_n = TraceGas::on() && (n == 4 || n == 7)     // ATM_TRACE_PROG: prognostic NH3 / SO2
+                    ? std::min(std::max(0.0, (n == 4 ? nh3 : so2).x[i_radial][j][k]), q_b)
+                    : (n == 0) ? q_v : (n == 1) ? q_c : q_b * f_n;
                 Atmosphere_vtk_radial_File << safe_val(q_n) << "\n";
             }
         }
@@ -1075,7 +1081,9 @@ void cAtmosphereModel::paraview_vtk_zonal(string &Name_Bathymetry_File,
                 double q_v, q_c, q_b;
                 const double q_l = cloud.x[i][j][k_zonal] + ice.x[i][j][k_zonal] + gr.x[i][j][k_zonal];
                 AtmMixture::split(c.x[i][j][k_zonal], co2.x[i][j][k_zonal], q_v, q_c, q_b, q_l);
-                const double q_n = (n == 0) ? q_v : (n == 1) ? q_c : q_b * f_n;
+                const double q_n = TraceGas::on() && (n == 4 || n == 7)     // ATM_TRACE_PROG: prognostic NH3 / SO2
+                    ? std::min(std::max(0.0, (n == 4 ? nh3 : so2).x[i][j][k_zonal]), q_b)
+                    : (n == 0) ? q_v : (n == 1) ? q_c : q_b * f_n;
                 Atmosphere_vtk_zonal_File << safe_val(q_n) << "\n";
             }
         }
@@ -1311,7 +1319,9 @@ void cAtmosphereModel::paraview_vtk_longal(string &Name_Bathymetry_File,
                 double q_v, q_c, q_b;
                 const double q_l = cloud.x[i][j_longal][k] + ice.x[i][j_longal][k] + gr.x[i][j_longal][k];
                 AtmMixture::split(c.x[i][j_longal][k], co2.x[i][j_longal][k], q_v, q_c, q_b, q_l);
-                const double q_n = (n == 0) ? q_v : (n == 1) ? q_c : q_b * f_n;
+                const double q_n = TraceGas::on() && (n == 4 || n == 7)     // ATM_TRACE_PROG: prognostic NH3 / SO2
+                    ? std::min(std::max(0.0, (n == 4 ? nh3 : so2).x[i][j_longal][k]), q_b)
+                    : (n == 0) ? q_v : (n == 1) ? q_c : q_b * f_n;
                 Atmosphere_vtk_longal_File << safe_val(q_n) << "\n";
             }
         }

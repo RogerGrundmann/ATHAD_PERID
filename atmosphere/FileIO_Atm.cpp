@@ -11,6 +11,7 @@
 #include <sstream>
 
 #include "cAtmosphereModel.h"
+#include "TraceGasAtm.h"
 #include "Utils.h"
 
 using namespace std;
@@ -291,11 +292,15 @@ void cAtmosphereModel::init_topography(){
 // prognostic arrays are stored; densities, forces and all moist-convection
 // diagnostics (S_*, M_*, MC_*, q_*_u, …) are recomputed each iteration from these.
 std::vector<Array*> cAtmosphereModel::restart_arrays(){
-    return { &t, &u, &v, &w, &c, &cloud, &ice, &gr, &co2,
+    std::vector<Array*> arrs = { &t, &u, &v, &w, &c, &cloud, &ice, &gr, &co2,
              &tn, &un, &vn, &wn, &cn, &cloudn, &icen, &grn, &co2n,
              &p_dyn, &p_stat,
              &tke, &dis, &tken, &disn, &nue,
              &P_rain, &P_snow, &P_rainn, &P_snown };
+    // ATM_TRACE_PROG: SO2 / NH3 appended at the end, so a dump written with the knob holds four more
+    // arrays and is not readable without it (and the other way round).
+    if (TraceGas::on()) for (Array* a : { &so2, &nh3, &so2n, &nh3n }) arrs.push_back(a);
+    return arrs;
 }
 
 void cAtmosphereModel::save_state(int iter, int Ma){

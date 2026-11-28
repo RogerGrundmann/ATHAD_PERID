@@ -15,6 +15,7 @@
 #include <cstdlib>   // getenv/atof for the remaining A/B knobs
 #include "cAtmosphereModel.h"
 #include "Utils.h"
+#include "TraceGasAtm.h"
 
 using namespace std;
 using namespace AtomUtils;
@@ -68,6 +69,11 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
     double dudthe, dvdthe, dwdthe, dtdthe, dpdthe, dcdthe, dclouddthe, dicedthe, dgdthe, dcodthe, dtkedthe, ddisdthe, dnuedthe;
     double dudphi, dvdphi, dwdphi, dtdphi, dpdphi, dcdphi, dclouddphi, dicedphi, dgdphi, dcodphi, dtkedphi, ddisdphi, dnuedphi;
 
+    // ATM_TRACE_PROG (TraceGasAtm.h): SO2 / NH3 on CO2's path, computed only with the knob
+    const bool tr_on = TraceGas::on();
+    double dsodr = 0.0, dsodthe = 0.0, dsodphi = 0.0, d2sodr2 = 0.0, d2sodthe2 = 0.0, d2sodphi2 = 0.0;
+    double dnhdr = 0.0, dnhdthe = 0.0, dnhdphi = 0.0, d2nhdr2 = 0.0, d2nhdthe2 = 0.0, d2nhdphi2 = 0.0;
+
     // ---- Second-order derivatives storage ----
     double d2udr2, d2vdr2, d2wdr2, d2tdr2, d2cdr2, d2clouddr2, d2icedr2, d2gdr2, d2codr2, d2tkedr2, d2disdr2;
     double d2udthe2, d2vdthe2, d2wdthe2, d2tdthe2, d2cdthe2, d2clouddthe2, d2icedthe2, d2gdthe2, d2codthe2, d2tkedthe2, d2disdthe2;
@@ -90,6 +96,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
         COMPUTE_DR_B(ice, dicedr, d2icedr2)
         COMPUTE_DR_B(gr, dgdr, d2gdr2)
         COMPUTE_DR_B(co2, dcodr, d2codr2)
+        if(tr_on){ COMPUTE_DR_B(so2, dsodr, d2sodr2) COMPUTE_DR_B(nh3, dnhdr, d2nhdr2) }   // ATM_TRACE_PROG
         COMPUTE_DR_B(tke, dtkedr, d2tkedr2)
         COMPUTE_DR_B(dis, ddisdr, d2disdr2)
         dpdr   = (-3.0*p_dyn.x[i][j][k] + 4.0*p_dyn.x[i+1][j][k] - p_dyn.x[i+2][j][k]) * inv_2dr;
@@ -111,6 +118,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
         COMPUTE_DR_F(ice, dicedr, d2icedr2)
         COMPUTE_DR_F(gr, dgdr, d2gdr2)
         COMPUTE_DR_F(co2, dcodr, d2codr2)
+        if(tr_on){ COMPUTE_DR_F(so2, dsodr, d2sodr2) COMPUTE_DR_F(nh3, dnhdr, d2nhdr2) }   // ATM_TRACE_PROG
         COMPUTE_DR_F(tke, dtkedr, d2tkedr2)
         COMPUTE_DR_F(dis, ddisdr, d2disdr2)
         dpdr   = (-3.0*p_dyn.x[0][j][k] + 4.0*p_dyn.x[1][j][k] - p_dyn.x[2][j][k]) * inv_2dr;
@@ -134,6 +142,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
         COMPUTE_DR_C(ice, dicedr, d2icedr2)
         COMPUTE_DR_C(gr, dgdr, d2gdr2)
         COMPUTE_DR_C(co2, dcodr, d2codr2)
+        if(tr_on){ COMPUTE_DR_C(so2, dsodr, d2sodr2) COMPUTE_DR_C(nh3, dnhdr, d2nhdr2) }   // ATM_TRACE_PROG
         COMPUTE_DR_C(tke, dtkedr, d2tkedr2)
         COMPUTE_DR_C(dis, ddisdr, d2disdr2)
         dpdr   = (p_dyn.x[i+1][j][k] - p_dyn.x[i-1][j][k]) * inv_2dr;
@@ -166,6 +175,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
             COMPUTE_DTHE_B(c, dcdthe, d2cdthe2) COMPUTE_DTHE_B(cloud, dclouddthe, d2clouddthe2)
             COMPUTE_DTHE_B(ice, dicedthe, d2icedthe2) COMPUTE_DTHE_B(gr, dgdthe, d2gdthe2)
             COMPUTE_DTHE_B(co2, dcodthe, d2codthe2)
+            if(tr_on){ COMPUTE_DTHE_B(so2, dsodthe, d2sodthe2) COMPUTE_DTHE_B(nh3, dnhdthe, d2nhdthe2) }   // ATM_TRACE_PROG
             COMPUTE_DTHE_B(tke, dtkedthe, d2tkedthe2) COMPUTE_DTHE_B(dis, ddisdthe, d2disdthe2)
             dpdthe   = (-3.0*p_dyn.x[i][j][k] + 4.0*p_dyn.x[i][j+1][k] - p_dyn.x[i][j+2][k]) * inv_2dthe;
             dnuedthe = (-3.0*nue.x[i][j][k]   + 4.0*nue.x[i][j+1][k]   - nue.x[i][j+2][k])   * inv_2dthe;
@@ -182,6 +192,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
             COMPUTE_DTHE_C(c, dcdthe, d2cdthe2) COMPUTE_DTHE_C(cloud, dclouddthe, d2clouddthe2)
             COMPUTE_DTHE_C(ice, dicedthe, d2icedthe2) COMPUTE_DTHE_C(gr, dgdthe, d2gdthe2)
             COMPUTE_DTHE_C(co2, dcodthe, d2codthe2)
+            if(tr_on){ COMPUTE_DTHE_C(so2, dsodthe, d2sodthe2) COMPUTE_DTHE_C(nh3, dnhdthe, d2nhdthe2) }   // ATM_TRACE_PROG
             COMPUTE_DTHE_C(tke, dtkedthe, d2tkedthe2) COMPUTE_DTHE_C(dis, ddisdthe, d2disdthe2)
             dpdthe   = -(-3.0*p_dyn.x[i][j][k] + 4.0*p_dyn.x[i][j-1][k] - p_dyn.x[i][j-2][k]) * inv_2dthe;
             dnuedthe = -(-3.0*nue.x[i][j][k]   + 4.0*nue.x[i][j-1][k]   - nue.x[i][j-2][k])   * inv_2dthe;
@@ -199,6 +210,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
         COMPUTE_DTHE_NP(c, dcdthe, d2cdthe2) COMPUTE_DTHE_NP(cloud, dclouddthe, d2clouddthe2)
         COMPUTE_DTHE_NP(ice, dicedthe, d2icedthe2) COMPUTE_DTHE_NP(gr, dgdthe, d2gdthe2)
         COMPUTE_DTHE_NP(co2, dcodthe, d2codthe2)
+        if(tr_on){ COMPUTE_DTHE_NP(so2, dsodthe, d2sodthe2) COMPUTE_DTHE_NP(nh3, dnhdthe, d2nhdthe2) }   // ATM_TRACE_PROG
         COMPUTE_DTHE_NP(tke, dtkedthe, d2tkedthe2) COMPUTE_DTHE_NP(dis, ddisdthe, d2disdthe2)
         dpdthe   = (-3.0*p_dyn.x[i][0][k] + 4.0*p_dyn.x[i][1][k] - p_dyn.x[i][2][k]) * inv_2dthe;
         dnuedthe = (-3.0*nue.x[i][0][k]   + 4.0*nue.x[i][1][k]   - nue.x[i][2][k])   * inv_2dthe;
@@ -215,6 +227,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
         COMPUTE_DTHE_SP(c, dcdthe, d2cdthe2) COMPUTE_DTHE_SP(cloud, dclouddthe, d2clouddthe2)
         COMPUTE_DTHE_SP(ice, dicedthe, d2icedthe2) COMPUTE_DTHE_SP(gr, dgdthe, d2gdthe2)
         COMPUTE_DTHE_SP(co2, dcodthe, d2codthe2)
+        if(tr_on){ COMPUTE_DTHE_SP(so2, dsodthe, d2sodthe2) COMPUTE_DTHE_SP(nh3, dnhdthe, d2nhdthe2) }   // ATM_TRACE_PROG
         COMPUTE_DTHE_SP(tke, dtkedthe, d2tkedthe2) COMPUTE_DTHE_SP(dis, ddisdthe, d2disdthe2)
         dpdthe   = -(-3.0*p_dyn.x[i][jm-1][k] + 4.0*p_dyn.x[i][jm-2][k] - p_dyn.x[i][jm-3][k]) * inv_2dthe;
         dnuedthe = -(-3.0*nue.x[i][jm-1][k]   + 4.0*nue.x[i][jm-2][k]   - nue.x[i][jm-3][k])   * inv_2dthe;
@@ -232,6 +245,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
         COMPUTE_DTHE_A(c, dcdthe, d2cdthe2) COMPUTE_DTHE_A(cloud, dclouddthe, d2clouddthe2)
         COMPUTE_DTHE_A(ice, dicedthe, d2icedthe2) COMPUTE_DTHE_A(gr, dgdthe, d2gdthe2)
         COMPUTE_DTHE_A(co2, dcodthe, d2codthe2)
+        if(tr_on){ COMPUTE_DTHE_A(so2, dsodthe, d2sodthe2) COMPUTE_DTHE_A(nh3, dnhdthe, d2nhdthe2) }   // ATM_TRACE_PROG
         COMPUTE_DTHE_A(tke, dtkedthe, d2tkedthe2) COMPUTE_DTHE_A(dis, ddisdthe, d2disdthe2)
         dpdthe   = (p_dyn.x[i][j+1][k] - p_dyn.x[i][j-1][k]) * inv_2dthe;
         dnuedthe = (nue.x[i][j+1][k]   - nue.x[i][j-1][k])   * inv_2dthe;
@@ -270,6 +284,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
             COMPUTE_DPHI_B(c, dcdphi, d2cdphi2) COMPUTE_DPHI_B(cloud, dclouddphi, d2clouddphi2)
             COMPUTE_DPHI_B(ice, dicedphi, d2icedphi2) COMPUTE_DPHI_B(gr, dgdphi, d2gdphi2)
             COMPUTE_DPHI_B(co2, dcodphi, d2codphi2)
+            if(tr_on){ COMPUTE_DPHI_B(so2, dsodphi, d2sodphi2) COMPUTE_DPHI_B(nh3, dnhdphi, d2nhdphi2) }   // ATM_TRACE_PROG
             COMPUTE_DPHI_B(tke, dtkedphi, d2tkedphi2) COMPUTE_DPHI_B(dis, ddisdphi, d2disdphi2)
             dpdphi   = (-3.0*p_dyn.x[i][j][k] + 4.0*p_dyn.x[i][j][k+1] - p_dyn.x[i][j][k+2]) * inv_2dphi;
             dnuedphi = (-3.0*nue.x[i][j][k]   + 4.0*nue.x[i][j][k+1]   - nue.x[i][j][k+2])   * inv_2dphi;
@@ -286,6 +301,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
             COMPUTE_DPHI_C(c, dcdphi, d2cdphi2) COMPUTE_DPHI_C(cloud, dclouddphi, d2clouddphi2)
             COMPUTE_DPHI_C(ice, dicedphi, d2icedphi2) COMPUTE_DPHI_C(gr, dgdphi, d2gdphi2)
             COMPUTE_DPHI_C(co2, dcodphi, d2codphi2)
+            if(tr_on){ COMPUTE_DPHI_C(so2, dsodphi, d2sodphi2) COMPUTE_DPHI_C(nh3, dnhdphi, d2nhdphi2) }   // ATM_TRACE_PROG
             COMPUTE_DPHI_C(tke, dtkedphi, d2tkedphi2) COMPUTE_DPHI_C(dis, ddisdphi, d2disdphi2)
             dpdphi   = -(-3.0*p_dyn.x[i][j][k] + 4.0*p_dyn.x[i][j][k-1] - p_dyn.x[i][j][k-2]) * inv_2dphi;
             dnuedphi = -(-3.0*nue.x[i][j][k]   + 4.0*nue.x[i][j][k-1]   - nue.x[i][j][k-2])   * inv_2dphi;
@@ -303,6 +319,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
         COMPUTE_DPHI_W(c, dcdphi, d2cdphi2) COMPUTE_DPHI_W(cloud, dclouddphi, d2clouddphi2)
         COMPUTE_DPHI_W(ice, dicedphi, d2icedphi2) COMPUTE_DPHI_W(gr, dgdphi, d2gdphi2)
         COMPUTE_DPHI_W(co2, dcodphi, d2codphi2)
+        if(tr_on){ COMPUTE_DPHI_W(so2, dsodphi, d2sodphi2) COMPUTE_DPHI_W(nh3, dnhdphi, d2nhdphi2) }   // ATM_TRACE_PROG
         COMPUTE_DPHI_W(tke, dtkedphi, d2tkedphi2) COMPUTE_DPHI_W(dis, ddisdphi, d2disdphi2)
         dpdphi   = (-3.0*p_dyn.x[i][j][0] + 4.0*p_dyn.x[i][j][1] - p_dyn.x[i][j][2]) * inv_2dphi;
         dnuedphi = (-3.0*nue.x[i][j][0]   + 4.0*nue.x[i][j][1]   - nue.x[i][j][2])   * inv_2dphi;
@@ -319,6 +336,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
         COMPUTE_DPHI_E(c, dcdphi, d2cdphi2) COMPUTE_DPHI_E(cloud, dclouddphi, d2clouddphi2)
         COMPUTE_DPHI_E(ice, dicedphi, d2icedphi2) COMPUTE_DPHI_E(gr, dgdphi, d2gdphi2)
         COMPUTE_DPHI_E(co2, dcodphi, d2codphi2)
+        if(tr_on){ COMPUTE_DPHI_E(so2, dsodphi, d2sodphi2) COMPUTE_DPHI_E(nh3, dnhdphi, d2nhdphi2) }   // ATM_TRACE_PROG
         COMPUTE_DPHI_E(tke, dtkedphi, d2tkedphi2) COMPUTE_DPHI_E(dis, ddisdphi, d2disdphi2)
         dpdphi   = -(-3.0*p_dyn.x[i][j][km-1] + 4.0*p_dyn.x[i][j][km-2] - p_dyn.x[i][j][km-3]) * inv_2dphi;
         dnuedphi = -(-3.0*nue.x[i][j][km-1]   + 4.0*nue.x[i][j][km-2]   - nue.x[i][j][km-3])   * inv_2dphi;
@@ -336,6 +354,7 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
         COMPUTE_DPHI_A(c, dcdphi, d2cdphi2) COMPUTE_DPHI_A(cloud, dclouddphi, d2clouddphi2)
         COMPUTE_DPHI_A(ice, dicedphi, d2icedphi2) COMPUTE_DPHI_A(gr, dgdphi, d2gdphi2)
         COMPUTE_DPHI_A(co2, dcodphi, d2codphi2)
+        if(tr_on){ COMPUTE_DPHI_A(so2, dsodphi, d2sodphi2) COMPUTE_DPHI_A(nh3, dnhdphi, d2nhdphi2) }   // ATM_TRACE_PROG
         COMPUTE_DPHI_A(tke, dtkedphi, d2tkedphi2) COMPUTE_DPHI_A(dis, ddisdphi, d2disdphi2)
         dpdphi   = (p_dyn.x[i][j][k+1] - p_dyn.x[i][j][k-1]) * inv_2dphi;
         dnuedphi = (nue.x[i][j][k+1]   - nue.x[i][j][k-1])   * inv_2dphi;
@@ -1143,6 +1162,20 @@ void cAtmosphereModel::RHS_Atmosphere_Turb(int i, int j, int k, const CellGeomet
         + coeff_trans * S_g.x[i][j][k] * r_humid.x[i][j][k];
 
     rhs_co2.x[i][j][k] = -transport_co2 + diffusion_co2;
+    if(tr_on){                                                          // ATM_TRACE_PROG: CO2's transport and diffusion
+        const double transport_so2 = u_exp * dsodr + v_invrm * dsodthe + w_invrs * dsodphi;
+        const double transport_nh3 = u_exp * dnhdr + v_invrm * dnhdthe + w_invrs * dnhdphi;
+        const double diffusion_so2 = ((d2sodr2 - curv * dsodr) * exp_2_rm + dsodr * two_over_rm_exp
+            + d2sodthe2 * inv_rm2 + dsodthe * cos_rm2sin
+            + d2sodphi2 * inv_rm2sinthe2
+            + dsodr * dlnrho_dr_i) * diff_co2_re_inv;
+        const double diffusion_nh3 = ((d2nhdr2 - curv * dnhdr) * exp_2_rm + dnhdr * two_over_rm_exp
+            + d2nhdthe2 * inv_rm2 + dnhdthe * cos_rm2sin
+            + d2nhdphi2 * inv_rm2sinthe2
+            + dnhdr * dlnrho_dr_i) * diff_co2_re_inv;
+        rhs_so2.x[i][j][k] = -transport_so2 + diffusion_so2;
+        rhs_nh3.x[i][j][k] = -transport_nh3 + diffusion_nh3;
+    }
 
     rhs_tke.x[i][j][k] = -transport_tke + diffusion_tke + tke_source.x[i][j][k];
     rhs_dis.x[i][j][k] = -transport_dis + diffusion_dis + dis_source.x[i][j][k];

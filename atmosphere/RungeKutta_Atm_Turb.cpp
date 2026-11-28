@@ -8,6 +8,7 @@
 */
 
 #include "cAtmosphereModel.h"
+#include "TraceGasAtm.h"
 
 #include <cstdint>
 #include <cstring>
@@ -49,6 +50,7 @@ void cAtmosphereModel::solveRungeKutta_Atmosphere_Turb(){
     computeLevelMeanTemperature();   // refresh buoyancy base state t_ref_level[i]
 
     const double half_dt  = 0.5 * dt;
+    const bool   tr_on    = TraceGas::on();           // ATM_TRACE_PROG: SO2 / NH3 on CO2's path (TraceGasAtm.h)
     const double dt_sixth = dt / 6.0;
 
     // Velocity caps removed (see RungeKutta_Atm.cpp note).  Multi-sweep
@@ -147,6 +149,8 @@ void cAtmosphereModel::solveRungeKutta_Atmosphere_Turb(){
                 double icen_ijk = icen.x[i][j][k];
                 double grn_ijk  = grn.x[i][j][k];
                 double co2n_ijk = co2n.x[i][j][k];
+                const double so2n_ijk = tr_on ? so2n.x[i][j][k] : 0.0;   // ATM_TRACE_PROG
+                const double nh3n_ijk = tr_on ? nh3n.x[i][j][k] : 0.0;
                 double tken_ijk = tken.x[i][j][k];
                 double disn_ijk = disn.x[i][j][k];
 
@@ -179,6 +183,12 @@ void cAtmosphereModel::solveRungeKutta_Atmosphere_Turb(){
                 ice.x[i][j][k]   = std::max(0.0, icen_ijk + ki1   * half_dt);
                 gr.x[i][j][k]    = std::max(0.0, grn_ijk  + kg1   * half_dt);
                 co2.x[i][j][k]   = co2n_ijk + kco1  * half_dt;
+                double kso1 = 0.0, knh1 = 0.0;
+                if (tr_on) {
+                    kso1 = rhs_so2.x[i][j][k];  knh1 = rhs_nh3.x[i][j][k];
+                    so2.x[i][j][k] = std::max(0.0, so2n_ijk + kso1 * half_dt);
+                    nh3.x[i][j][k] = std::max(0.0, nh3n_ijk + knh1 * half_dt);
+                }
                 tke.x[i][j][k]   = safe_clamp(tken_ijk + ktke1 * half_dt, 0.0,     tke_max_nd);
                 dis.x[i][j][k]   = std::max(1.0e-10, disn_ijk + kdis1 * half_dt);
 
@@ -206,6 +216,12 @@ void cAtmosphereModel::solveRungeKutta_Atmosphere_Turb(){
                 ice.x[i][j][k]   = std::max(0.0, icen_ijk + ki2   * half_dt);
                 gr.x[i][j][k]    = std::max(0.0, grn_ijk  + kg2   * half_dt);
                 co2.x[i][j][k]   = co2n_ijk + kco2  * half_dt;
+                double kso2 = 0.0, knh2 = 0.0;
+                if (tr_on) {
+                    kso2 = rhs_so2.x[i][j][k];  knh2 = rhs_nh3.x[i][j][k];
+                    so2.x[i][j][k] = std::max(0.0, so2n_ijk + kso2 * half_dt);
+                    nh3.x[i][j][k] = std::max(0.0, nh3n_ijk + knh2 * half_dt);
+                }
                 tke.x[i][j][k]   = safe_clamp(tken_ijk + ktke2 * half_dt, 0.0,     tke_max_nd);
                 dis.x[i][j][k]   = std::max(1.0e-10,  disn_ijk + kdis2 * half_dt);
 
@@ -233,6 +249,12 @@ void cAtmosphereModel::solveRungeKutta_Atmosphere_Turb(){
                 ice.x[i][j][k]   = std::max(0.0, icen_ijk + ki3   * dt);
                 gr.x[i][j][k]    = std::max(0.0, grn_ijk  + kg3   * dt);
                 co2.x[i][j][k]   = co2n_ijk + kco3  * dt;
+                double kso3 = 0.0, knh3 = 0.0;
+                if (tr_on) {
+                    kso3 = rhs_so2.x[i][j][k];  knh3 = rhs_nh3.x[i][j][k];
+                    so2.x[i][j][k] = std::max(0.0, so2n_ijk + kso3 * dt);
+                    nh3.x[i][j][k] = std::max(0.0, nh3n_ijk + knh3 * dt);
+                }
                 tke.x[i][j][k]   = safe_clamp(tken_ijk + ktke3 * dt, 0.0,     tke_max_nd);
                 dis.x[i][j][k]   = std::max(1.0e-10,  disn_ijk + kdis3 * dt);
 
@@ -260,6 +282,11 @@ void cAtmosphereModel::solveRungeKutta_Atmosphere_Turb(){
                 ice.x[i][j][k]   = std::max(0.0, icen_ijk + (ki1   + 2.0*ki2   + 2.0*ki3   + ki4)   * dt_sixth);
                 gr.x[i][j][k]    = std::max(0.0, grn_ijk  + (kg1   + 2.0*kg2   + 2.0*kg3   + kg4)   * dt_sixth);
                 co2.x[i][j][k]   = co2n_ijk + (kco1  + 2.0*kco2  + 2.0*kco3  + kco4)  * dt_sixth;
+                if (tr_on) {
+                    const double kso4 = rhs_so2.x[i][j][k], knh4 = rhs_nh3.x[i][j][k];
+                    so2.x[i][j][k] = std::max(0.0, so2n_ijk + (kso1 + 2.0*kso2 + 2.0*kso3 + kso4) * dt_sixth);
+                    nh3.x[i][j][k] = std::max(0.0, nh3n_ijk + (knh1 + 2.0*knh2 + 2.0*knh3 + knh4) * dt_sixth);
+                }
                 tke.x[i][j][k]   = safe_clamp(tken_ijk + (ktke1 + 2.0*ktke2 + 2.0*ktke3 + ktke4) * dt_sixth, 0.0, tke_max_nd);
                 dis.x[i][j][k]   = std::max(1.0e-10, disn_ijk + (kdis1 + 2.0*kdis2 + 2.0*kdis3 + kdis4) * dt_sixth);
             }

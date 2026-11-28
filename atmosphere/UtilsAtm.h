@@ -2,6 +2,7 @@
 
 #include "cAtmosphereModel.h"
 #include "Utils.h"
+#include "TraceGasAtm.h"
 
 #include <iostream>
 #include <cmath>
@@ -41,6 +42,10 @@ public:
                     m.P_rainn.x[i][j][k]= cf * m.P_rain.x[i][j][k];
                     m.P_snown.x[i][j][k]= cf * m.P_snow.x[i][j][k];
                     m.co2n.x[i][j][k]   = cf * m.co2.x[i][j][k];
+                    if (TraceGas::on()) {                       // ATM_TRACE_PROG
+                        m.so2n.x[i][j][k] = cf * m.so2.x[i][j][k];
+                        m.nh3n.x[i][j][k] = cf * m.nh3.x[i][j][k];
+                    }
                     m.tken.x[i][j][k]   = cf * m.tke.x[i][j][k];
                     m.disn.x[i][j][k]   = cf * m.dis.x[i][j][k];
                 }
@@ -403,6 +408,7 @@ public:
         // 3D arrays initialized to 0.0
         Array* arrays_3d_zero[] = {
             &m.h, &m.u, &m.v, &m.w, &m.c, &m.cloud, &m.gr, &m.ice, &m.co2,
+            &m.so2, &m.nh3, &m.so2n, &m.nh3n, &m.rhs_so2, &m.rhs_nh3,     // ATM_TRACE_PROG (zero when off)
             &m.un, &m.vn, &m.wn, &m.cn, &m.cloudn, &m.icen, &m.grn,
             &m.p_dyn, &m.p_stat,
             &m.CloudBase, &m.LevelFreeSinking, &m.Deep_beg, &m.Deep_end,

@@ -31,6 +31,7 @@
 #include "BC_Atm.h"
 #include "TurbulenceAtm.h"
 #include "MultiLayerRadiation.h"
+#include "TraceGasAtm.h"
 
 // ATM_T_DAMP_GROUND (default 1; 0 restores the old call, byte-identical; 2026-11-27, user: "apply fix 1 to all
 // three and measure it"). The 1-2-1 de-checkerboard of t (set-up and moist block) ran along i from the
@@ -1161,6 +1162,8 @@ void cAtmosphereModel::RunTimeSlice(int Ma){
     // On Earth the ordering was harmless because co2 was in ppm and never touched the density.
     initCO2();                                                          // INITIAL CO2 field
     ThermoAtm(*this).co2Column(true);                                   // column CO2 path + the conservation reference
+    TraceGas::init(*this);                                              // ATM_TRACE_PROG: SO2 / NH3 from the background they replace
+    TraceGas::traceColumn(*this, true);
     ThermoAtm(*this).waterBudget(true);                                 // total-water conservation reference
     ThermoAtm(*this).densities();
     ThermoAtm(*this).forces();
@@ -2141,6 +2144,8 @@ cout << endl << endl << endl << "      AGCM: run_3D_loop atm ...................
             // global mass-weighted mean q_CO2 — a conserved quantity here, since the model
             // has no CO2 source or sink, so any drift is transport error.
             ThermoAtm(*this).co2Column(iter_n % diagnosticStride() == 0);
+            TraceGas::sinks(*this);                                     // ATM_TRACE_WET / _OCEAN (TraceGasAtm.h); no-op when off
+            TraceGas::traceColumn(*this, iter_n % diagnosticStride() == 0);
             ThermoAtm(*this).waterBudget(iter_n % diagnosticStride() == 0, "post-moist");
             // ATM_PROGNOSTIC_T=1 (default 0, ported from ATHAD 2026-11-26): the temperature is no longer
             // prescribed by densities(), so the convective adjustment (dry; ATM_CONV_ADJ_MOIST=1 saturated

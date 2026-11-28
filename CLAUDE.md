@@ -697,6 +697,50 @@ binary before, 16 / 16 files identical; at the default 16 / 16 identical with th
 and sphere carry them); `H2O` = `WaterVapour`/1000 to 5e-9 (the output rounding); the eight sum to 1 - condensate.
 Measured here: the column is dry (H2O 0.0164 first air level, 0.0008 top), so the six change by ~2 % with height (SO2 0.01737 -> 0.01766).
 
+## `ATM_TRACE_PROG` -- SO2 and NH3 as prognostic trace gases with rain and ocean sinks (2026-11-28), default 0 = off
+
+Register row PERID-TRACE-CHEM. `atmosphere/TraceGasAtm.h` (the full derivation is its header comment). WHY: SO2 and
+NH3 were a FIXED well-mixed share of the background (f_bg 0.117 / 0.031 of q_b): no transport, no source, no sink,
+although the background opacity is 639x the lumped kappa_bg and both gases are highly soluble over this liquid,
+raining sea. Unset, nothing of it runs and the output is byte-identical to the model before (check below).
+
+- **(a) `ATM_TRACE_PROG=1`** -- `so2`, `nh3` [kg/kg] on CO2's path: CO2's RHS terms (central-difference advection,
+  diffusion with `sc_CO2` and the density term) in every boundary branch of `RHS_Atm_Turb.cpp`, the same in-place
+  RK4 stages (clamped at 0), the radial / theta / phi / surface / pole boundary passes, the restart dump (four
+  arrays appended: a dump with the knob is not readable without it). Start: q_x = f_bg[x] (1 - q_v - q_CO2), the
+  background share they replace. R_mix / cp keep the fixed background composition.
+- **(b) `ATM_TRACE_WET`, `ATM_TRACE_OCEAN`** (default 1 with PROG), operator-split after the moist physics of each
+  iteration. Rain: the precipitation production R_p = S_r + S_s + S_g [kg/kg/s] removes the share R_p dt / q_cond
+  of the condensate, and the gas goes with it in its dissolved share f_aq = H* R T L / (1 + H* R T L) of the
+  LIQUID cloud water (L its volume fraction), H* the effective Henry constant from Seinfeld & Pandis (SO2: H 1.23
+  M/atm, K1, K2; NH3: H 62 M/atm, Kb, Kw; van 't Hoff in T), [H+] from `ATM_TRACE_PH` (default 5.0, assumed, not
+  computed). Ice takes up nothing; nothing is re-released where rain evaporates. Ocean: the first air cell over a
+  liquid-water surface (the FluidPhase code-10 test) loses q (1 - exp(-v_dep dt / dz_1)), `ATM_TRACE_VDEP` default
+  0.01 m/s, an infinite sink. dt = dt L_atm / u_0 x `ATM_TRACE_ACCEL` (default 1; ~0.03 s per iteration here). Every
+  removal is applied to the RK base copy `so2n` / `nh3n` too: the loop runs moist block -> RK (so2 = so2n + k dt) ->
+  copy, so a change to `so2` alone was overwritten in every integrated cell (measured: the monitor removed 25 kg/m2
+  while the inventory moved 4e-8). The ocean sink is invisible at ACCEL 1; the RAIN sink is not -- the model's
+  microphysics converts condensate within seconds, and the wet removal inherits that speed.
+- **(c) `ATM_TRACE_OPAC`** (default 1 with PROG; not with `ATM_BG_LUMPED=1`): the grey gas optical depth takes the
+  local so2 / nh3 in place of their share of kappa_bg q_b, the other four background gases keep theirs.
+
+Monitor at the diagnostic stride: `AGCM: trace gases: mean q SO2 .. NH3 ..; removed so far [kg/m2] rain .. ocean ..`.
+Output: the species fields `SO2` and `NH3` (mass fractions; panorama, sphere and slices, `ATM_SPECIES_3D`) ARE the
+prognostic fields when the knob is on (otherwise the fixed share).
+
+**Measured (2026-11-28, from scratch, 1 thread, `scratchpad/trace*`, not kept):** knob unset 16 / 16 files identical to
+`1e932ee` (2 it, panorama included). On, 20 it, global-mean column [kg/m2] start SO2 2152.1 / NH3 572.1:
+
+| ACCEL | it | SO2 drop | SO2 removed (rain + ocean) | NH3 drop | NH3 removed |
+|---|---|---|---|---|---|
+| 1e5 | 10 / 20 | 320.5 / 428.2 | 331.5 / 454.9 | 191.5 / 191.4 | 191.5 / 195.9 |
+| 1 | 10 / 20 | 8.8 / 13.2 | 21.4 / 43.6 | 25.5 / 42.2 | 28.4 / 49.6 |
+
+At ACCEL 1e5 (20 it ~17 h) rain takes 20 % of the SO2 and 33 % of the NH3. **OPEN: at ACCEL 1 only ~30-40 % of the
+removed SO2 shows up as an inventory drop** (NH3 ~85 %): something puts SO2 back -- suspected, not verified, the zero
+clamp of the RK stages re-adding mass where advection undershoots next to cells the rain emptied. Register row
+PERID-TRACE-CHEM.
+
 # Moved from README.md on 2026-11-26
 
 The sections below were the technical part of README.md and were moved here verbatim (user: "CLAUDE.md everywhere"); the README keeps each heading with a one-sentence summary.

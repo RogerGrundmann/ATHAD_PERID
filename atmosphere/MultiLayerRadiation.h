@@ -3,6 +3,7 @@
 #include "MixtureAtm.h"
 #include "cAtmosphereModel.h"
 #include "Utils.h"
+#include "TraceGasAtm.h"
 
 #include <vector>
 #include <cmath>
@@ -264,7 +265,12 @@ public:
                     const double u_col = dp_Pa * inv_g;               // [kg/m2] total layer mass
                     const double broad = m.p_stat.x[i][j][k] * 100.0 / p_ref;   // pressure broadening
 
-                    double tau_gas = (kappa_H2O * q_v + kappa_CO2 * q_c + kappa_bg * q_b)
+                    // ATM_TRACE_OPAC (TraceGasAtm.h): the local SO2 / NH3 instead of their fixed share of q_b.
+                    // The off branch is the expression as it was, written out, so it compiles to the same code.
+                    double tau_gas = TraceGas::opac()
+                        ? (kappa_H2O * q_v + kappa_CO2 * q_c
+                           + TraceGas::kappaTimesBackground(m, kappa_bg, q_b, i, j, k)) * u_col * broad
+                        : (kappa_H2O * q_v + kappa_CO2 * q_c + kappa_bg * q_b)
                                    * u_col * broad;
 
                     // Cloud liquid + ice longwave greenhouse, unchanged in form (Stephens

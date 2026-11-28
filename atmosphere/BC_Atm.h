@@ -100,6 +100,8 @@ public:
             m.gr.x[i][j][k]    = std::max(0.0, avg(m.gr));
 
             m.co2.x[i][j][k]   = avg(m.co2);
+            m.so2.x[i][j][k]   = std::max(0.0, avg(m.so2));          // ATM_TRACE_PROG (0 when off)
+            m.nh3.x[i][j][k]   = std::max(0.0, avg(m.nh3));
 
             m.S_c_c.x[i][j][k] = avg(m.S_c_c);
             m.S_v.x[i][j][k]   = avg(m.S_v);
@@ -177,6 +179,8 @@ public:
                         m.r_dry.x[i][j][k]   = m.r_air;
                         m.r_humid.x[i][j][k] = m.r_air;
                         m.co2.x[i][j][k]     = m.co2.x[0][j][k];
+                        m.so2.x[i][j][k]     = m.so2.x[0][j][k];      // ATM_TRACE_PROG
+                        m.nh3.x[i][j][k]     = m.nh3.x[0][j][k];
 
                         // Microphysics (current and time-level n+1).
                         m.c.x[i][j][k]      = 0.0;
@@ -326,6 +330,8 @@ public:
                         m.r_dry.x[i][j][k]   = m.r_air;
                         m.r_humid.x[i][j][k] = m.r_air;
                         m.co2.x[i][j][k]     = m.co2.x[0][j][k];
+                        m.so2.x[i][j][k]     = m.so2.x[0][j][k];      // ATM_TRACE_PROG
+                        m.nh3.x[i][j][k]     = m.nh3.x[0][j][k];
 
                         // Microphysics (current and time-level n+1).
                         m.c.x[i][j][k]      = 0.0;
@@ -446,6 +452,8 @@ public:
                 m.gr.x[0][j][k]    = m.gr.x[i_mount][j][k];
 
                 m.co2.x[0][j][k]   = m.co2.x[i_mount][j][k];
+                m.so2.x[0][j][k]   = m.so2.x[i_mount][j][k];          // ATM_TRACE_PROG
+                m.nh3.x[0][j][k]   = m.nh3.x[i_mount][j][k];
 
                 m.S_c_c.x[0][j][k] = m.S_c_c.x[i_mount][j][k];
                 m.S_v.x[0][j][k]   = m.S_v.x[i_mount][j][k];
@@ -600,7 +608,7 @@ public:
         // At i=0 cubic is used; apply_wall_bc() reasserts the correct dis value.
 //        Array* cubic_bot_vn_top[] = { &m.c, &m.cloud, &m.ice, &m.gr, &m.co2,
         Array* cubic_bot_vn_top[] = {
-            &m.cloud, &m.ice, &m.gr, &m.co2,
+            &m.cloud, &m.ice, &m.gr, &m.co2, &m.so2, &m.nh3,
             &m.c_u, &m.e_d, &m.e_l, &m.e_p, &m.g_p,
             &m.tke, &m.dis, &m.nue, &m.prod, &m.tke_source, &m.dis_source
         };
@@ -788,7 +796,7 @@ public:
             &m.t, &m.radiation, &m.p_stat, &m.r_humid, &m.r_dry,
             &m.u, &m.v, &m.w,
             &m.c, &m.cloud, &m.ice, &m.gr,
-            &m.PrecipitableWaterLocal, &m.co2,
+            &m.PrecipitableWaterLocal, &m.co2, &m.so2, &m.nh3,
             &m.tke, &m.dis, &m.nue, &m.prod, &m.tke_source, &m.dis_source
         };
         constexpr int n_vn = sizeof(fields_vn) / sizeof(fields_vn[0]);
@@ -839,7 +847,7 @@ public:
         Array* fields_avg[] = {
             &m.t, &m.radiation, &m.p_stat, &m.r_humid, &m.r_dry,
             &m.u, &m.v, &m.w,
-            &m.c, &m.cloud, &m.ice, &m.gr, &m.co2,
+            &m.c, &m.cloud, &m.ice, &m.gr, &m.co2, &m.so2, &m.nh3,
             &m.S_c_c, &m.S_v, &m.S_c, &m.S_i, &m.S_r, &m.S_s, &m.S_g,
             &m.q_v_u, &m.q_c_u, &m.u_u, &m.v_u, &m.w_u,
             &m.s, &m.s_u, &m.s_d,
@@ -1067,7 +1075,7 @@ public:
         // extrapolation here would only produce spuriously high land-cell values.
         Array* scalars[] = {
             &m.t, &m.radiation,
-            &m.c, &m.cloud, &m.ice, &m.gr, &m.co2,
+            &m.c, &m.cloud, &m.ice, &m.gr, &m.co2, &m.so2, &m.nh3,
             &m.p_stat,
             &m.r_dry, &m.r_humid,
             &m.Q_Latent, &m.Q_Sensible,

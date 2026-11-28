@@ -818,6 +818,7 @@ public:
     Array icen;                                                         // cloud ice new
     Array grn;                                                          // cloud ice new
     Array co2n;                                                         // CO2 new
+    Array so2, nh3, so2n, nh3n;                                         // ATM_TRACE_PROG: SO2 / NH3 mass fractions + RK copies (TraceGasAtm.h)
     Array p_dyn;                                                        // dynamic pressure
     Array p_stat;                                                       // static pressure
     Array TempStand;                                                    // US Standard Atmosphere Temperature
@@ -832,6 +833,7 @@ public:
     Array rhs_ice;                                                      // auxilliar field RHS cloud ice
     Array rhs_g;                                                        // auxilliar field RHS cloud graupel
     Array rhs_co2;                                                      // auxilliar field RHS CO2
+    Array rhs_so2, rhs_nh3;                                             // ATM_TRACE_PROG: RHS of SO2 / NH3
     Array aux_u;                                                        // auxilliar field u-velocity component
     Array aux_v;                                                        // auxilliar field v-velocity component
     Array aux_w;                                                        // auxilliar field w-velocity component
