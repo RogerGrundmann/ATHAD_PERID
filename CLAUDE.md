@@ -736,10 +736,19 @@ prognostic fields when the knob is on (otherwise the fixed share).
 | 1e5 | 10 / 20 | 320.5 / 428.2 | 331.5 / 454.9 | 191.5 / 191.4 | 191.5 / 195.9 |
 | 1 | 10 / 20 | 8.8 / 13.2 | 21.4 / 43.6 | 25.5 / 42.2 | 28.4 / 49.6 |
 
-At ACCEL 1e5 (20 it ~17 h) rain takes 20 % of the SO2 and 33 % of the NH3. **OPEN: at ACCEL 1 only ~30-40 % of the
-removed SO2 shows up as an inventory drop** (NH3 ~85 %): something puts SO2 back -- suspected, not verified, the zero
-clamp of the RK stages re-adding mass where advection undershoots next to cells the rain emptied. Register row
-PERID-TRACE-CHEM.
+At ACCEL 1e5 (20 it ~17 h) rain takes 20 % of the SO2 and 33 % of the NH3. The table's drop column is the OLD monitor
+(interior levels, rho dz): the ~30-40 % "gap" at ACCEL 1 was NOT a sink leak. `ATM_TRACE_BUDGET=1` (print-only, below)
+charged it to `densities()` and the BC passes, and with both sinks OFF the full-column inventory still grows +0.6 % per
+10 it (densities +8.53, BC +4.50 kg/m2 SO2) while the model's own CO2 monitor drifts +0.072 % in the same run: the host
+model does not hold a mass-fraction tracer's mass when densities() reshapes the pressure profile every iteration.
+Subtracting that drift, the sinks remove what they report (10 it, ACCEL 1: -19.80 sinks + 12.27 drift = -7.53 against
+-6.51 measured; the ~1 kg/m2 offset is the change before the first budget mark, the same in the sinks-off arm).
+Register rows PERID-TRACE-CHEM, PERID-TRACER-DRIFT.
+
+**`ATM_TRACE_BUDGET=1`** (print-only, needs `ATM_TRACE_PROG=1`): the change of the global SO2 / NH3 column [kg/m2] charged
+to eight stages of the loop (rest + moist block, sinks, densities, forces..turbulence, BC passes, pre-RK, RK, post-RK),
+printed with the monitor. The monitor and the budget weigh each layer by dp/g over the whole column, as `co2Column()`
+(rho dz over the interior drifted with densities() even with no sink).
 
 # Moved from README.md on 2026-11-26
 

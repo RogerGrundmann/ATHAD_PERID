@@ -120,6 +120,15 @@ namespace TraceGas {
     inline double& removed_ocean_so2() { static double v = 0.0; return v; }
     inline double& removed_ocean_nh3() { static double v = 0.0; return v; }
 
+    // Layer air mass [kg/m2] as ThermoAtm::co2Column weights it (hydrostatic, dp/g): the model's own mass measure.
+    // NOT rho * dz -- densities() rewrites r_humid every iteration while the column's dp/g stays fixed, so a
+    // rho * dz inventory drifted +0.6 % per 10 iterations with both sinks off (measured 11-28, ATM_TRACE_BUDGET).
+    inline double layer_mass(const cAtmosphereModel& m, int i, int j, int k){
+        const double dp_Pa = (i < m.im - 1) ? (m.p_stat.x[i][j][k] - m.p_stat.x[i+1][j][k]) * 100.0
+                                            :  m.p_stat.x[i][j][k] * 100.0;
+        return (dp_Pa > 0.0) ? dp_Pa / m.g : 0.0;
+    }
+
     // (a) initial condition: the fixed background share the fields replace.
     inline void init(cAtmosphereModel& m){
         if (!on()) return;
@@ -171,6 +180,7 @@ namespace TraceGas {
                     const double dz  = 0.5 * (m.get_layer_height(i + 1) - m.get_layer_height(i - 1));
                     const double rho = m.r_humid.x[i][j][k];
                     if (!(rho > 0.0) || !(dz > 0.0)) continue;
+                    const double u_air = layer_mass(m, i, j, k);            // accounting weight, as co2Column
                     if (wet()){
                         const double R_p  = std::max(0.0, m.S_r.x[i][j][k] + m.S_s.x[i][j][k] + m.S_g.x[i][j][k]);
                         const double q_l  = std::max(0.0, m.cloud.x[i][j][k]);
@@ -183,7 +193,7 @@ namespace TraceGas {
                             const double dn = m.nh3.x[i][j][k] * f_aq(henryNH3(T, h), T, L) * frac;
                             m.so2.x[i][j][k] -= ds;  m.nh3.x[i][j][k] -= dn;
                             m.so2n.x[i][j][k] -= ds; m.nh3n.x[i][j][k] -= dn;   // the RK base state too (see below)
-                            rr_s += wgt * ds * rho * dz;  rr_n += wgt * dn * rho * dz;
+                            rr_s += wgt * ds * u_air;  rr_n += wgt * dn * u_air;
                         }
                     }
                     if (ocean() && i == ig + 1){
@@ -200,7 +210,7 @@ namespace TraceGas {
                             const double ds = m.so2.x[i][j][k] * fac, dn = m.nh3.x[i][j][k] * fac;
                             m.so2.x[i][j][k] -= ds;  m.nh3.x[i][j][k] -= dn;
                             m.so2n.x[i][j][k] -= ds; m.nh3n.x[i][j][k] -= dn;
-                            ro_s += wgt * ds * rho * dz;  ro_n += wgt * dn * rho * dz;
+                            ro_s += wgt * ds * u_air;  ro_n += wgt * dn * u_air;
                         }
                     }
                 }
@@ -211,6 +221,44 @@ namespace TraceGas {
         }
     }
 
+
+    // ATM_TRACE_BUDGET=1 (print-only, 2026-11-28): the change of the global SO2 / NH3 column [kg/m2] charged to each
+    // stage of the loop, between marks placed in cAtmosphereModel.cpp; printed with the monitor. It answers what
+    // puts SO2 back after the rain removed it (PERID-TRACE-CHEM). Reads only.
+    inline bool budget(){ static const bool v = on() && env_d("ATM_TRACE_BUDGET", 0.0) != 0.0; return v; }
+    inline void inventory(cAtmosphereModel& m, double& s, double& n){
+        double ms = 0.0, mn = 0.0, ws = 0.0;
+        #pragma omp parallel for collapse(2) schedule(static) reduction(+:ms, mn, ws)
+        for (int j = 0; j < m.jm; j++)
+            for (int k = 0; k < m.km; k++){
+                const double wgt = std::sin(m.the.z[j]);
+                ws += wgt;
+                // the WHOLE column, as co2Column: the ground-row layer included (its total is p_0 / g; the interior's
+                // share moves whenever densities() reshapes the pressure profile, +0.6 % per 10 it with no sink).
+                for (int i = m.i_topography[j][k]; i < m.im; i++){
+                    const double dm = wgt * layer_mass(m, i, j, k);
+                    ms += dm * m.so2.x[i][j][k];  mn += dm * m.nh3.x[i][j][k];
+                }
+            }
+        s = (ws > 0.0) ? ms / ws : 0.0;  n = (ws > 0.0) ? mn / ws : 0.0;
+    }
+    constexpr int N_STAGE = 8;
+    inline const char* stage_name(int q){
+        static const char* nm[N_STAGE] = {"rest+moist", "sinks", "densities", "thermo+turb", "BC passes", "pre-RK",
+                                          "RK", "post-RK"};
+        return nm[q];
+    }
+    inline double* stage_so2(){ static double a[N_STAGE] = {0}; return a; }
+    inline double* stage_nh3(){ static double a[N_STAGE] = {0}; return a; }
+    // mark(q): charge the change since the previous mark to stage q
+    inline void mark(cAtmosphereModel& m, int q){
+        if (!budget()) return;
+        static bool first = true; static double s0 = 0.0, n0 = 0.0;
+        double s, n; inventory(m, s, n);
+        if (!first){ stage_so2()[q] += s - s0; stage_nh3()[q] += n - n0; }
+        first = false; s0 = s; n0 = n;
+    }
+
     // Monitor: global (area x mass weighted) mean mass fraction and the cumulative removal.
     inline void traceColumn(cAtmosphereModel& m, bool report){
         if (!on() || !report) return;
@@ -219,9 +267,10 @@ namespace TraceGas {
         for (int j = 0; j < m.jm; j++)
             for (int k = 0; k < m.km; k++){
                 const double wgt = std::sin(m.the.z[j]);
-                for (int i = m.i_topography[j][k] + 1; i < m.im - 1; i++){
-                    const double dz = 0.5 * (m.get_layer_height(i + 1) - m.get_layer_height(i - 1));
-                    const double dm = wgt * m.r_humid.x[i][j][k] * dz;
+                // the WHOLE column, as co2Column: the ground-row layer included (its total is p_0 / g; the interior's
+                // share moves whenever densities() reshapes the pressure profile, +0.6 % per 10 it with no sink).
+                for (int i = m.i_topography[j][k]; i < m.im; i++){
+                    const double dm = wgt * layer_mass(m, i, j, k);
                     ms += dm * m.so2.x[i][j][k];  mn += dm * m.nh3.x[i][j][k];  mm += dm;
                 }
             }
@@ -231,5 +280,9 @@ namespace TraceGas {
             printf("      AGCM: trace gases: mean q SO2 %.6e  NH3 %.6e kg/kg;  column [kg/m2] SO2 %.6e  NH3 %.6e;"
                    "  removed so far [kg/m2] rain SO2 %.4e NH3 %.4e, ocean SO2 %.4e NH3 %.4e\n", ms / mm, mn / mm,
                    ms / w_sum, mn / w_sum, removed_rain_so2(), removed_rain_nh3(), removed_ocean_so2(), removed_ocean_nh3());
+        if (budget())
+            for (int q = 0; q < N_STAGE; q++)
+                printf("      AGCM: trace budget  %-11s  SO2 %+.4e  NH3 %+.4e kg/m2 (cumulative)\n",
+                       stage_name(q), stage_so2()[q], stage_nh3()[q]);
     }
 }

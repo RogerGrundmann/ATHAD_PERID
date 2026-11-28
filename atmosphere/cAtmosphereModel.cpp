@@ -2144,7 +2144,9 @@ cout << endl << endl << endl << "      AGCM: run_3D_loop atm ...................
             // global mass-weighted mean q_CO2 — a conserved quantity here, since the model
             // has no CO2 source or sink, so any drift is transport error.
             ThermoAtm(*this).co2Column(iter_n % diagnosticStride() == 0);
+            TraceGas::mark(*this, 0);                                   // ATM_TRACE_BUDGET (print-only): rest + moist block
             TraceGas::sinks(*this);                                     // ATM_TRACE_WET / _OCEAN (TraceGasAtm.h); no-op when off
+            TraceGas::mark(*this, 1);                                   // ATM_TRACE_BUDGET: sinks
             TraceGas::traceColumn(*this, iter_n % diagnosticStride() == 0);
             ThermoAtm(*this).waterBudget(iter_n % diagnosticStride() == 0, "post-moist");
             // ATM_PROGNOSTIC_T=1 (default 0, ported from ATHAD 2026-11-26): the temperature is no longer
@@ -2158,6 +2160,7 @@ cout << endl << endl << endl << "      AGCM: run_3D_loop atm ...................
                 ConvectiveAdjustment(*this).run();
             }
             ThermoAtm(*this).densities(false, true);
+            TraceGas::mark(*this, 2);                                   // ATM_TRACE_BUDGET: (conv. adjustment +) densities
             ThermoAtm(*this).forces();
             ThermoAtm(*this).standAtm_DewPoint_HumidRel();              // International Standard Atmosphere temperature profile, dew point temperature, relative humidity profile
             ThermoAtm(*this).waterVapourEvaporation();                  // correction of surface water vapour by evaporation
@@ -2176,6 +2179,7 @@ cout << endl << endl << endl << "      AGCM: run_3D_loop atm ...................
             }
 
 //            UtilsAtm(*this).valueLimitationAtm();                       // value limitation prevents local formation of NANs
+            TraceGas::mark(*this, 3);                                   // ATM_TRACE_BUDGET: forces ... turbulence
         }  // iter_n % moist_stride == 0
 
         if(iter_n % momentum_stride == 0){
@@ -2186,6 +2190,7 @@ cout << endl << endl << endl << "      AGCM: run_3D_loop atm ...................
 
             BC_Atm(*this).bcScalarSurfSur();                            // scalar variable at surfaces extrapolated by von Neumann
             BC_Atm(*this).bcSolidGround();                              // values inside mountains
+            TraceGas::mark(*this, 4);                                   // ATM_TRACE_BUDGET: BC passes
 
             // ATHAD: text diagnostics on their own cadence — every 10 iterations for a
             // short run, every 100 for a long one. The equatorial profile shows the
@@ -2264,7 +2269,9 @@ cout << endl << endl << endl << "      AGCM: run_3D_loop atm ...................
         // when diffusion_ramp=0 (inviscid spin-up). The former separate laminar
         // solveRungeKutta_Atmosphere / RHS_Atm.cpp path was dropped — inviscid is now an
         // independent switch (diffusion_ramp), decoupled from the turbulence selection.
+        TraceGas::mark(*this, 5);                                       // ATM_TRACE_BUDGET: up to the RK step
         solveRungeKutta_Atmosphere_Turb();
+        TraceGas::mark(*this, 6);                                       // ATM_TRACE_BUDGET: RK
         ubudget_capture = false;
         vbudget_capture = false;
         wbudget_capture = false;
@@ -2403,6 +2410,7 @@ cout << endl << endl << endl << "      AGCM: run_3D_loop atm ...................
 
         UtilsAtm(*this).findResiduumAtm();
 
+        TraceGas::mark(*this, 7);                                       // ATM_TRACE_BUDGET: filters after the RK step
         UtilsAtm(*this).storeIntermediateData3D(1.0);
 
         // Interactive radiation, per mode: (A) re-solve MLR on the current field to refresh the
